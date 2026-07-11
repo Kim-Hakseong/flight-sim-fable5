@@ -17,6 +17,22 @@ const TYPES = {
   int16: { size: 2, get: (v, o) => v.getInt16(o, true), set: (v, o, x) => v.setInt16(o, x, true) },
   uint8: { size: 1, get: (v, o) => v.getUint8(o), set: (v, o, x) => v.setUint8(o, x & 0xff) },
   int8: { size: 1, get: (v, o) => v.getInt8(o), set: (v, o, x) => v.setInt8(o, x) },
+  char16: { // fixed 16-byte, NUL-padded string (param_id); sorts as a 1-byte array
+    size: 16,
+    get: (v, o) => {
+      let s = '';
+      for (let i = 0; i < 16; i++) {
+        const c = v.getUint8(o + i);
+        if (c === 0) break;
+        s += String.fromCharCode(c);
+      }
+      return s;
+    },
+    set: (v, o, x) => {
+      const s = String(x ?? '');
+      for (let i = 0; i < 16; i++) v.setUint8(o + i, i < s.length ? s.charCodeAt(i) & 0x7f : 0);
+    },
+  },
 };
 
 // name → { id, crcExtra, fields: [[fieldName, type], …] in wire order }
@@ -32,6 +48,31 @@ export const MESSAGES = {
     id: 11, crcExtra: 89,
     fields: [
       ['custom_mode', 'uint32'], ['target_system', 'uint8'], ['base_mode', 'uint8'],
+    ],
+  },
+  PARAM_REQUEST_READ: {
+    id: 20, crcExtra: 214,
+    fields: [
+      ['param_index', 'int16'], ['target_system', 'uint8'], ['target_component', 'uint8'],
+      ['param_id', 'char16'],
+    ],
+  },
+  PARAM_REQUEST_LIST: {
+    id: 21, crcExtra: 159,
+    fields: [['target_system', 'uint8'], ['target_component', 'uint8']],
+  },
+  PARAM_VALUE: {
+    id: 22, crcExtra: 220,
+    fields: [
+      ['param_value', 'float'], ['param_count', 'uint16'], ['param_index', 'uint16'],
+      ['param_id', 'char16'], ['param_type', 'uint8'],
+    ],
+  },
+  PARAM_SET: {
+    id: 23, crcExtra: 168,
+    fields: [
+      ['param_value', 'float'], ['target_system', 'uint8'], ['target_component', 'uint8'],
+      ['param_id', 'char16'], ['param_type', 'uint8'],
     ],
   },
   GPS_RAW_INT: {

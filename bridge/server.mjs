@@ -7,6 +7,7 @@ import dgram from 'node:dgram';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encode, decode } from './mavlink.mjs';
+import { PARAM_DEFS, PARAM_TYPE_REAL32, defaultParams, clampParam } from '../src/params.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const HTTP_PORT = Number(process.env.BRIDGE_HTTP_PORT ?? 8765);
@@ -85,6 +86,24 @@ function handleCommandInt(f) {
     return MAV_RESULT_ACCEPTED;
   }
   return MAV_RESULT_UNSUPPORTED;
+}
+
+// --- Parameter protocol (shared table; the sim re-tunes live via SSE) ----------
+const params = defaultParams();
+
+function sendParamValue(id, index = PARAM_DEFS.findIndex((p) => p.id === id)) {
+  sendMsg('PARAM_VALUE', {
+    param_value: params[id], param_count: PARAM_DEFS.length, param_index: index,
+    param_id: id, param_type: PARAM_TYPE_REAL32,
+  });
+}
+
+function handleParamSet(f) {
+  const clamped = clampParam(f.param_id, f.param_value);
+  if (clamped === null) return; // unknown id: silence (QGC will time out its widget)
+  params[f.param_id] = clamped;
+  sendParamValue(f.param_id); // echo (possibly clamped) — closes QGC's set cycle
+  pushCommand({ type: 'param', id: f.param_id, value: clamped });
 }
 
 // --- Mission protocol (upload: COUNT → REQUEST_INT×n → ACK; download: mirror) ---
@@ -174,6 +193,18 @@ udp.on('message', (buf, rinfo) => {
       if (it) sendMsg('MISSION_ITEM_INT', it);
       break;
     }
+    case 'PARAM_REQUEST_LIST':
+      PARAM_DEFS.forEach((p, i) => sendParamValue(p.id, i));
+      break;
+    case 'PARAM_REQUEST_READ': {
+      const byIndex = f.param_index >= 0 ? PARAM_DEFS[f.param_index]?.id : null;
+      const id = byIndex ?? f.param_id;
+      if (id in params) sendParamValue(id);
+      break;
+    }
+    case 'PARAM_SET':
+      handleParamSet(f);
+      break;
     case 'MISSION_ACK': // GCS finished downloading
     case 'HEARTBEAT':
       break;

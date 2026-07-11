@@ -27,6 +27,24 @@ test('payload lengths match the MAVLink v1 spec', () => {
   assert.equal(payloadLength(MESSAGES.MISSION_CURRENT), 2);
   assert.equal(payloadLength(MESSAGES.MISSION_ITEM_REACHED), 2);
   assert.equal(payloadLength(MESSAGES.COMMAND_INT), 35);
+  assert.equal(payloadLength(MESSAGES.PARAM_REQUEST_READ), 20);
+  assert.equal(payloadLength(MESSAGES.PARAM_REQUEST_LIST), 2);
+  assert.equal(payloadLength(MESSAGES.PARAM_VALUE), 25);
+  assert.equal(payloadLength(MESSAGES.PARAM_SET), 23);
+});
+
+test('char16: param ids pad with NULs and round-trip; 16-char ids fit exactly', () => {
+  const short = decode(encode('PARAM_VALUE', {
+    param_value: 0.7, param_count: 12, param_index: 7, param_id: 'AP_THR_CRUISE', param_type: 9,
+  }));
+  assert.equal(short.fields.param_id, 'AP_THR_CRUISE');
+  assert.equal(short.crcOk, true);
+
+  const exact = decode(encode('PARAM_SET', {
+    param_value: 1, target_system: 1, target_component: 1,
+    param_id: 'ABCDEFGHIJKLMNOP', param_type: 9, // exactly 16 — no NUL terminator on wire
+  }));
+  assert.equal(exact.fields.param_id, 'ABCDEFGHIJKLMNOP');
 });
 
 test('heartbeat frame: header layout and wire-order payload', () => {

@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import dgram from 'node:dgram';
 import { fileURLToPath } from 'node:url';
 import { decode, encode } from '../bridge/mavlink.mjs';
+import { PARAM_DEFS } from '../src/params.js';
 
 const BRIDGE = fileURLToPath(new URL('../bridge/server.mjs', import.meta.url));
 
@@ -196,6 +197,32 @@ try {
   check(cur?.fields.seq === 1, 'MISSION_CURRENT follows the sim');
   check(reachedMsg?.fields.seq === 0, 'MISSION_ITEM_REACHED fires on the reach edge');
 
+  // 3e) M4 parameters: full list, targeted read, and a live (clamped) set.
+  const paramValues = []; // params need every PARAM_VALUE, not just the latest
+  const collectParams = (buf) => {
+    const m = decode(buf);
+    if (m?.name === 'PARAM_VALUE') paramValues.push(m.fields);
+  };
+  gcs.on('message', collectParams);
+  await sendToBridge('PARAM_REQUEST_LIST', { target_system: 1, target_component: 1 });
+  await new Promise((r) => setTimeout(r, 500));
+  check(paramValues.length === PARAM_DEFS.length, `PARAM_REQUEST_LIST → all ${PARAM_DEFS.length} PARAM_VALUEs (got ${paramValues.length})`);
+  check(paramValues.every((p) => p.param_count === PARAM_DEFS.length), 'PARAM_VALUE.param_count consistent');
+
+  paramValues.length = 0;
+  await sendToBridge('PARAM_REQUEST_READ', { param_index: -1, target_system: 1, target_component: 1, param_id: 'AP_THR_CRUISE' });
+  await new Promise((r) => setTimeout(r, 300));
+  check(paramValues.some((p) => p.param_id === 'AP_THR_CRUISE'), 'PARAM_REQUEST_READ by id answered');
+
+  paramValues.length = 0;
+  await sendToBridge('PARAM_SET', { param_value: 9.9, target_system: 1, target_component: 1, param_id: 'AP_THR_CRUISE', param_type: 9 });
+  await new Promise((r) => setTimeout(r, 300));
+  const echoed = paramValues.find((p) => p.param_id === 'AP_THR_CRUISE');
+  check(Math.abs(echoed?.param_value - 1) < 1e-6, `PARAM_SET out-of-range clamps to max (echoed ${echoed?.param_value})`);
+  const paramEvt = await sseWait((e) => e.type === 'param');
+  check(paramEvt?.id === 'AP_THR_CRUISE' && Math.abs(paramEvt.value - 1) < 1e-6, 'clamped param relayed to the sim over SSE');
+  gcs.off('message', collectParams);
+
   // Reconnect: the bridge must replay the last command (monotonic seq dedupe).
   const sse2 = await fetch(`http://127.0.0.1:${httpPort}/commands`);
   const r2 = sse2.body.getReader();
@@ -206,7 +233,7 @@ try {
     if (done) break;
     replay += new TextDecoder().decode(value);
   }
-  check(replay.includes('"type":"goto"'), 'last command replayed on SSE (re)connect');
+  check(replay.includes('"type":"param"'), 'last command replayed on SSE (re)connect');
   r2.cancel().catch(() => {});
   reader.cancel().catch(() => {});
 

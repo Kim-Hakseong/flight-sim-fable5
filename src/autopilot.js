@@ -7,6 +7,9 @@
 import { G, MAX_RATE } from './physics.js';
 import { eulerFromQuat, headingDeg } from './telemetry.js';
 import { missionStep, horizontalDistance } from './missions.js';
+import { defaultParams } from './params.js';
+
+const DP = defaultParams();
 
 // Must exceed the achievable turn radius (V²/g·tanφ ≈ 280 m at 40 m/s, 30° bank),
 // or the loiter rails the bank, bleeds lift, and spirals in.
@@ -31,35 +34,36 @@ export function bearingToDeg(pos, to = [0, 0, 0]) {
 }
 
 // Hold a target altitude + heading: cascade of P loops onto the rate-command stick.
-export function holdControls(state, targetAlt, targetHeading, throttleBase = 0.7) {
+// Gains come from the shared param table (PARAM_SET re-tunes them live).
+export function holdControls(state, targetAlt, targetHeading, throttleBase = null, P = DP) {
   const e = eulerFromQuat(state.quat);
   const speed = Math.max(10, Math.hypot(...state.vel));
 
   const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
-  const bankTarget = clamp(hdgErr * 0.03, -0.6, 0.6); // rad; full bank past ~20° error
-  const roll = clamp((bankTarget - e.roll) * 2.5, -1, 1);
+  const bankTarget = clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
+  const roll = clamp((bankTarget - e.roll) * P.AP_ROLL_P, -1, 1);
   // Coordinated turn: nose follows the velocity vector at ω = g·tanφ / V.
   const yaw = clamp((G * Math.tan(e.roll)) / speed / MAX_RATE.yaw, -1, 1);
 
-  const climbTarget = clamp((targetAlt - state.pos[1]) * 0.25, -4, 6);
+  const climbTarget = clamp((targetAlt - state.pos[1]) * P.AP_ALT_P, -P.AP_SINK_MAX, P.AP_CLIMB_MAX);
   const pitchTarget = clamp((climbTarget - state.vel[1]) * 0.05, -0.3, 0.35);
-  const pitch = clamp((pitchTarget - e.pitch) * 3, -1, 1);
+  const pitch = clamp((pitchTarget - e.pitch) * P.AP_PITCH_P, -1, 1);
 
-  const throttle = clamp(throttleBase + climbTarget * 0.04, 0.15, 1);
+  const throttle = clamp((throttleBase ?? P.AP_THR_CRUISE) + climbTarget * 0.04, 0.15, 1);
   return { pitch, roll, yaw, throttle };
 }
 
 // One guidance step. ap: { mode, landing, targetAlt, targetHeading,
 // guided: {x,z,alt}|null, mission: {targets,idx}|null }.
 // Returns { controls, ap, disarm, reached } — ap may transition (pure: fresh object).
-export function apStep(state, ap) {
+export function apStep(state, ap, P = DP) {
   let next = ap;
   let stepReached = []; // waypoint seqs completed during this step
   const out = (controls, apOut = next, disarm = false, reached = stepReached) =>
     ({ controls, ap: apOut, disarm, reached });
 
   if (ap.landing) {
-    const c = holdControls(state, -50, ap.targetHeading, 0); // drive alt down
+    const c = holdControls(state, -50, ap.targetHeading, 0, P); // drive alt down
     const flare = state.pos[1] < 15 ? 0.6 : 1; // shallow the sink near the ground
     const controls = { ...c, throttle: 0, pitch: c.pitch * flare };
     const down = state.pos[1] <= 0.5 && Math.hypot(state.vel[0], state.vel[2]) < 3;
@@ -72,7 +76,7 @@ export function apStep(state, ap) {
         next = { ...ap, mode: MODES.GUIDED }; // climb-out done: hold here
         break;
       }
-      const c = holdControls(state, ap.targetAlt, ap.targetHeading, 1);
+      const c = holdControls(state, ap.targetAlt, ap.targetHeading, 1, P);
       return out({ ...c, throttle: 1 }, ap);
     }
     case MODES.RTL: {
@@ -81,7 +85,7 @@ export function apStep(state, ap) {
         next = { ...ap, landing: true };
         break;
       }
-      return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos)), ap);
+      return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P), ap);
     }
     case MODES.AUTO: {
       if (!ap.mission) break; // no plan yet: hold
@@ -95,11 +99,11 @@ export function apStep(state, ap) {
       }
       if (ms.action === 'rtl') {
         next = { ...next, mode: MODES.RTL };
-        return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos)), next);
+        return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P), next);
       }
       if (ms.action === 'done') break; // mission complete: hold here
       const brg = bearingToDeg(state.pos, [ms.target.x, 0, ms.target.z]);
-      return out(holdControls(state, ms.target.alt, brg), next);
+      return out(holdControls(state, ms.target.alt, brg, null, P), next);
     }
     case MODES.GUIDED: {
       if (!ap.guided) break; // no target: hold
@@ -116,12 +120,12 @@ export function apStep(state, ap) {
         const rz = dx * Math.sin(a) + dz * Math.cos(a);
         aim = [t.x + rx * LOITER_RADIUS_M, 0, t.z + rz * LOITER_RADIUS_M];
       }
-      return out(holdControls(state, t.alt, bearingToDeg(state.pos, aim)), ap);
+      return out(holdControls(state, t.alt, bearingToDeg(state.pos, aim), null, P), ap);
     }
     default:
       break; // MANUAL(landing)/LOITER: hold captured alt + heading
   }
 
-  const controls = holdControls(state, next.targetAlt, next.targetHeading);
+  const controls = holdControls(state, next.targetAlt, next.targetHeading, null, P);
   return out(controls);
 }

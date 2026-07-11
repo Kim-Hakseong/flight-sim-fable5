@@ -9,6 +9,7 @@ import { MODES, MODE_NAMES, apStep } from './autopilot.js';
 import { startMissionLink } from './missionLink.js';
 import { toLocalTargets } from './missions.js';
 import { geodeticToLocal } from './telemetry.js';
+import { defaultParams, clampParam } from './params.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -28,6 +29,7 @@ let ap = {
 };
 let lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
 let lastReached = -1; // last mission seq completed (edge → MISSION_ITEM_REACHED)
+let params = defaultParams(); // live-tunable via PARAM_SET; persists across resets
 
 function setMode(m) {
   const e = eulerFromQuat(state.quat);
@@ -56,6 +58,11 @@ function applyCommand(cmd) {
       const [x, , z] = geodeticToLocal({ lat: cmd.lat, lon: cmd.lon });
       setMode(MODES.GUIDED);
       ap = { ...ap, guided: { x, z, alt: Math.max(40, cmd.alt > 1 ? cmd.alt : state.pos[1]) } };
+      break;
+    }
+    case 'param': {
+      const v = clampParam(cmd.id, cmd.value);
+      if (v !== null) params = { ...params, [cmd.id]: v };
       break;
     }
   }
@@ -88,7 +95,7 @@ function stepSim(dt) {
   if (ap.mode === MODES.MANUAL && !ap.landing) {
     controls = readControls();
   } else {
-    const r = apStep(state, ap);
+    const r = apStep(state, ap, params);
     ap = r.ap;
     controls = r.controls;
     if (r.disarm) armed = false;
@@ -123,7 +130,7 @@ window.__advance = (seconds, dt = DT) => {
   return window.__state();
 };
 window.__reset = () => reset();
-window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, ...state });
+window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, ...state });
 window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for tests/HILS
 
 // --- Scene -------------------------------------------------------------------

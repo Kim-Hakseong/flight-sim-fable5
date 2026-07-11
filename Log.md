@@ -86,3 +86,19 @@
 - **M4 — Parameters**: PARAM_REQUEST_LIST / PARAM_REQUEST_READ / PARAM_SET for autopilot gains + sensor sigmas, shared param table, range clamping.
 **Notes**:
 - QGC flow now works end-to-end at packet level: upload a plan → slide-to-start (MISSION_START) → it flies waypoints and reports progress; "Go to location" reroutes into a stable orbit.
+
+## 2026-07-11 — M4: parameters
+
+**Status**: GREEN
+**Files changed**: src/params.js, src/autopilot.js, src/main.js, bridge/mavlink.mjs, bridge/server.mjs, tests/params.test.mjs, tests/mavlink.test.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 40/40 pass · console 0 ✓ · gcs-loop-check PASS (38/38, incl. list/read/set/clamp) · determinism ✓
+**Decisions**:
+- src/params.js is the shared table (defs + defaults + clamp), imported by BOTH the browser sim and the node bridge — one source of truth, per PRD.
+- 8 autopilot gains + 4 sensor sigmas (sigmas consumed in M5). All REAL32.
+- Set flow: bridge clamps → echoes PARAM_VALUE (closes QGC's set cycle) → SSE 'param' → sim re-tunes live. Unknown ids are ignored (QGC times out its widget, matching real AP behavior).
+- Params survive `__reset` (vehicles persist params); they're in `__state` so determinism checks see them.
+- char16 codec type added for param_id (NUL-padded, 16-char exact fits, no terminator on wire).
+**Next**:
+- **M5 — HILS faults visible in the GCS**: sensor error model (scale/bias/noise/lag) + `injectFault` (freeze/dropout/bias), SYS_STATUS sensor-health bits + STATUSTEXT on fault edges.
+**Notes**:
+- In QGC's param screen the vehicle now lists AP_*/SNS_* params; editing AP_BANK_MAX etc. visibly changes turn behavior mid-flight.
