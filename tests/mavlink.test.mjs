@@ -1,0 +1,68 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  MAGIC_V1, MESSAGES, crcX25, encode, decode, payloadLength,
+} from '../bridge/mavlink.mjs';
+
+test('crc: X.25 / CRC-16-MCRF4XX known vector ("123456789" → 0x6F91)', () => {
+  const bytes = [...'123456789'].map((c) => c.charCodeAt(0));
+  assert.equal(crcX25(bytes), 0x6f91);
+});
+
+test('payload lengths match the MAVLink v1 spec', () => {
+  assert.equal(payloadLength(MESSAGES.HEARTBEAT), 9);
+  assert.equal(payloadLength(MESSAGES.ATTITUDE), 28);
+  assert.equal(payloadLength(MESSAGES.GLOBAL_POSITION_INT), 28);
+  assert.equal(payloadLength(MESSAGES.VFR_HUD), 20);
+  assert.equal(payloadLength(MESSAGES.GPS_RAW_INT), 30);
+});
+
+test('heartbeat frame: header layout and wire-order payload', () => {
+  const pkt = encode('HEARTBEAT', {
+    custom_mode: 0x04030201, type: 1, autopilot: 3,
+    base_mode: 81, system_status: 4, mavlink_version: 3,
+  }, { seq: 7, sysid: 1, compid: 1 });
+  assert.equal(pkt.length, 6 + 9 + 2);
+  assert.deepEqual([...pkt.slice(0, 6)], [MAGIC_V1, 9, 7, 1, 1, 0]);
+  // custom_mode (uint32) must be FIRST in the payload — the v1 size reorder.
+  assert.deepEqual([...pkt.slice(6, 10)], [0x01, 0x02, 0x03, 0x04]);
+  assert.deepEqual([...pkt.slice(10, 15)], [1, 3, 81, 4, 3]);
+});
+
+test('round-trip: every M1 message encodes → decodes with crcOk', () => {
+  const samples = {
+    HEARTBEAT: { custom_mode: 10, type: 1, autopilot: 3, base_mode: 209, system_status: 4, mavlink_version: 3 },
+    ATTITUDE: { time_boot_ms: 123456, roll: 0.1, pitch: -0.05, yaw: 1.57, rollspeed: 0.01, pitchspeed: -0.02, yawspeed: 0.005 },
+    GLOBAL_POSITION_INT: { time_boot_ms: 123456, lat: 374449000, lon: 1264656000, alt: 127000, relative_alt: 120000, vx: 4000, vy: 12, vz: -110, hdg: 35999 },
+    VFR_HUD: { airspeed: 41.5, groundspeed: 40.2, alt: 127, climb: 1.1, heading: 359, throttle: 65 },
+    GPS_RAW_INT: { time_usec: 123456789n, lat: 374449000, lon: 1264656000, alt: 127000, eph: 80, epv: 120, vel: 4020, cog: 35900, fix_type: 3, satellites_visible: 12 },
+  };
+  for (const [name, fields] of Object.entries(samples)) {
+    const msg = decode(encode(name, fields, { seq: 42 }));
+    assert.ok(msg, `${name}: decode returned null`);
+    assert.equal(msg.name, name);
+    assert.equal(msg.crcOk, true, `${name}: bad CRC`);
+    assert.equal(msg.seq, 42);
+    for (const [k, v] of Object.entries(fields)) {
+      if (typeof v === 'bigint') assert.equal(msg.fields[k], v, `${name}.${k}`);
+      else assert.ok(Math.abs(Number(msg.fields[k]) - v) < 1e-3, `${name}.${k}: ${msg.fields[k]} ≠ ${v}`);
+    }
+  }
+});
+
+test('decode: rejects a corrupted CRC and resyncs past garbage', () => {
+  const pkt = encode('HEARTBEAT', { custom_mode: 0, type: 1, autopilot: 3, base_mode: 81, system_status: 4, mavlink_version: 3 });
+  const bad = Uint8Array.from(pkt);
+  bad[bad.length - 1] ^= 0xff;
+  assert.equal(decode(bad).crcOk, false);
+
+  const noisy = new Uint8Array([0x00, 0xfe, 0x03, ...pkt]);
+  const msg = decode(noisy);
+  assert.equal(msg.name, 'HEARTBEAT');
+  assert.equal(msg.crcOk, true);
+});
+
+test('decode: returns null on truncated or unknown input', () => {
+  assert.equal(decode(new Uint8Array([0xfe, 9, 0, 1])), null);
+  assert.equal(decode(new Uint8Array(20).fill(0x55)), null);
+});

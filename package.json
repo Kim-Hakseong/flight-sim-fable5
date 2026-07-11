@@ -6,6 +6,8 @@
   "description": "GCS-first deterministic 6-DOF flight simulator (browser sim + Node MAVLink bridge)",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "bridge": "node bridge/server.mjs",
+    "check:gcs": "node tests/gcs-loop-check.mjs",
     "serve": "python3 -m http.server 8123",
     "check:browser": "node tests/browser-check.mjs"
   }

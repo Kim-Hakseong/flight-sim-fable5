@@ -4,6 +4,7 @@
 // wall clock only decides HOW MANY steps to run — never feeds the physics.
 
 import { stepAircraft, initialState } from './physics.js';
+import { startTelemetry, telemetryFrom } from './telemetry.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -140,5 +141,10 @@ function frame(tMs) {
   render();
 }
 requestAnimationFrame(frame);
+
+// Feed the GCS bridge if (and only if) this page is served by it.
+startTelemetry(() => telemetryFrom(state, throttle, simTime)).then((on) => {
+  if (on) console.log('telemetry → bridge: on');
+});
 
 window.__ready = true;
