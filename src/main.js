@@ -7,6 +7,8 @@ import { stepAircraft, initialState } from './physics.js';
 import { startTelemetry, telemetryFrom, eulerFromQuat, headingDeg } from './telemetry.js';
 import { MODES, MODE_NAMES, apStep } from './autopilot.js';
 import { startMissionLink } from './missionLink.js';
+import { toLocalTargets } from './missions.js';
+import { geodeticToLocal } from './telemetry.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -20,16 +22,22 @@ let manual = false; // once __advance is used, wall-clock stepping stops (test/H
 
 // The sim is authoritative for arm/mode; the GCS only requests changes.
 let armed = true; // boots armed + airborne so the standalone sim flies immediately
-let ap = { mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0 };
+let ap = {
+  mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0,
+  guided: null, mission: null,
+};
 let lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
+let lastReached = -1; // last mission seq completed (edge → MISSION_ITEM_REACHED)
 
 function setMode(m) {
   const e = eulerFromQuat(state.quat);
-  // Capture "here" as the hold target; real guidance targets arrive in M3.
+  // Capture "here" as the hold target; the mission survives mode changes.
   ap = {
     mode: m, landing: false,
     targetAlt: Math.max(40, state.pos[1]),
     targetHeading: headingDeg(e.yaw),
+    guided: null,
+    mission: ap.mission,
   };
 }
 
@@ -40,6 +48,16 @@ function applyCommand(cmd) {
     case 'takeoff': armed = true; setMode(MODES.TAKEOFF); ap.targetAlt = cmd.alt; break;
     case 'land': ap = { ...ap, landing: true }; break;
     case 'rtl': setMode(MODES.RTL); break;
+    case 'mission':
+      ap = { ...ap, mission: { targets: toLocalTargets(cmd.items), idx: 0 } };
+      lastReached = -1;
+      break;
+    case 'goto': {
+      const [x, , z] = geodeticToLocal({ lat: cmd.lat, lon: cmd.lon });
+      setMode(MODES.GUIDED);
+      ap = { ...ap, guided: { x, z, alt: Math.max(40, cmd.alt > 1 ? cmd.alt : state.pos[1]) } };
+      break;
+    }
   }
 }
 
@@ -74,6 +92,7 @@ function stepSim(dt) {
     ap = r.ap;
     controls = r.controls;
     if (r.disarm) armed = false;
+    if (r.reached.length) lastReached = r.reached[r.reached.length - 1];
   }
   if (!armed) controls = { ...controls, throttle: 0 }; // DISARM cuts the engine
 
@@ -87,8 +106,12 @@ function reset() {
   throttle = 0.65;
   simTime = 0;
   armed = true;
-  ap = { mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0 };
+  ap = {
+    mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0,
+    guided: null, mission: null,
+  };
   lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
+  lastReached = -1;
   keys.clear();
 }
 
@@ -160,7 +183,8 @@ function render() {
   camera.lookAt(aircraft.position);
 
   const spd = Math.hypot(state.vel[0], state.vel[1], state.vel[2]);
-  const modeLabel = (MODE_NAMES[ap.mode] ?? ap.mode) + (ap.landing ? '·LAND' : '');
+  const wp = ap.mission ? ` · WP ${Math.min(ap.mission.idx + 1, ap.mission.targets.length)}/${ap.mission.targets.length}` : '';
+  const modeLabel = (MODE_NAMES[ap.mode] ?? ap.mode) + (ap.landing ? '·LAND' : '') + wp;
   hud.textContent =
     `SPD ${spd.toFixed(1).padStart(5)} m/s` +
     `\nALT ${state.pos[1].toFixed(1).padStart(5)} m` +
@@ -191,7 +215,11 @@ requestAnimationFrame(frame);
 // Feed the GCS bridge if (and only if) this page is served by it; commands ride
 // back on the same probe result.
 startTelemetry(() =>
-  telemetryFrom(state, lastControls.throttle, simTime, { armed, customMode: ap.mode })
+  telemetryFrom(state, lastControls.throttle, simTime, {
+    armed, customMode: ap.mode,
+    missionSeq: ap.mission ? Math.min(ap.mission.idx, ap.mission.targets.length - 1) : -1,
+    missionReached: lastReached,
+  })
 ).then((on) => {
   if (on) {
     startMissionLink(applyCommand);

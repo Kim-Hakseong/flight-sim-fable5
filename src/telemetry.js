@@ -20,6 +20,14 @@ export function localToGeodetic(pos, home = HOME) {
   };
 }
 
+// Geodetic → local scene coords (inverse of localToGeodetic). Returns [x, y, z].
+export function geodeticToLocal(geo, home = HOME) {
+  const latRad = (home.lat * Math.PI) / 180;
+  const north = ((geo.lat - home.lat) * Math.PI / 180) * R_EARTH;
+  const east = ((geo.lon - home.lon) * Math.PI / 180) * R_EARTH * Math.cos(latRad);
+  return [east, (geo.alt ?? home.alt) - home.alt, -north];
+}
+
 // Attitude quat → aerospace euler (rad): roll right +, pitch up +, yaw 0=north, +east.
 // Derived by mapping body FRD / world NED onto our frame (N=−z, E=+x, D=−y).
 export function eulerFromQuat(quat) {
@@ -59,6 +67,7 @@ export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true,
     airspeed: speed, groundspeed: Math.hypot(vx, vz), climb: vy,
     throttlePct: Math.round(throttle * 100),
     armed: vehicle.armed, customMode: vehicle.customMode,
+    missionSeq: vehicle.missionSeq ?? -1, missionReached: vehicle.missionReached ?? -1,
   };
 }
 

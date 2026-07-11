@@ -64,9 +64,81 @@ function handleCommandLong(f) {
     case 20: // MAV_CMD_NAV_RETURN_TO_LAUNCH
       pushCommand({ type: 'rtl' });
       return MAV_RESULT_ACCEPTED;
+    case 192: // MAV_CMD_DO_REPOSITION (COMMAND_LONG form: params 5/6/7 = lat/lon/alt)
+      pushCommand({ type: 'goto', lat: f.param5, lon: f.param6, alt: f.param7 });
+      return MAV_RESULT_ACCEPTED;
+    case 300: // MAV_CMD_MISSION_START → fly the uploaded plan
+      pushCommand({ type: 'mode', custom: 10 }); // AUTO
+      return MAV_RESULT_ACCEPTED;
     default:
       return MAV_RESULT_UNSUPPORTED;
   }
+}
+
+function handleCommandInt(f) {
+  if (f.command === 192) { // DO_REPOSITION: x/y are lat/lon·1e7, z is alt
+    pushCommand({ type: 'goto', lat: f.x / 1e7, lon: f.y / 1e7, alt: f.z });
+    return MAV_RESULT_ACCEPTED;
+  }
+  if (f.command === 300) {
+    pushCommand({ type: 'mode', custom: 10 });
+    return MAV_RESULT_ACCEPTED;
+  }
+  return MAV_RESULT_UNSUPPORTED;
+}
+
+// --- Mission protocol (upload: COUNT → REQUEST_INT×n → ACK; download: mirror) ---
+let missionItems = []; // accepted plan, as raw MISSION_ITEM_INT fields
+let upload = null; // { count, items, timer }
+
+function requestNextItem() {
+  if (!upload) return;
+  sendMsg('MISSION_REQUEST_INT', {
+    seq: upload.items.length, target_system: 255, target_component: 0,
+  });
+}
+
+function startUpload(count) {
+  if (upload) clearInterval(upload.timer);
+  if (count === 0) {
+    missionItems = [];
+    sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
+    pushCommand({ type: 'mission', items: [] });
+    return;
+  }
+  upload = { count, items: [], tries: 0, timer: null };
+  upload.timer = setInterval(() => {
+    if (++upload.tries > 8) { // give up: MAV_MISSION_ERROR
+      clearInterval(upload.timer);
+      upload = null;
+      sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 1 });
+      return;
+    }
+    requestNextItem();
+  }, 700);
+  requestNextItem();
+}
+
+function onMissionItem(f) {
+  if (!upload || f.seq !== upload.items.length) return; // duplicate/stray
+  upload.items.push(f);
+  upload.tries = 0;
+  if (upload.items.length < upload.count) {
+    requestNextItem();
+    return;
+  }
+  clearInterval(upload.timer);
+  missionItems = upload.items;
+  upload = null;
+  sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
+  pushCommand({
+    type: 'mission',
+    items: missionItems.map((it) => ({
+      seq: it.seq, command: it.command, frame: it.frame,
+      lat: it.x / 1e7, lon: it.y / 1e7, alt: it.z,
+      param1: it.param1, param2: it.param2,
+    })),
+  });
 }
 
 udp.on('message', (buf, rinfo) => {
@@ -76,18 +148,43 @@ udp.on('message', (buf, rinfo) => {
     if (msg) console.log(`gcs → bridge: ${msg.name} (BAD CRC, dropped)`);
     return;
   }
-  if (msg.name === 'COMMAND_LONG') {
-    const result = handleCommandLong(msg.fields);
-    sendMsg('COMMAND_ACK', { command: msg.fields.command, result });
-  } else if (msg.name === 'SET_MODE') {
-    pushCommand({ type: 'mode', custom: msg.fields.custom_mode });
-  } else if (msg.name !== 'HEARTBEAT') {
-    console.log(`gcs → bridge: ${msg.name} (ignored)`);
+  const f = msg.fields;
+  switch (msg.name) {
+    case 'COMMAND_LONG':
+      sendMsg('COMMAND_ACK', { command: f.command, result: handleCommandLong(f) });
+      break;
+    case 'COMMAND_INT':
+      sendMsg('COMMAND_ACK', { command: f.command, result: handleCommandInt(f) });
+      break;
+    case 'SET_MODE':
+      pushCommand({ type: 'mode', custom: f.custom_mode });
+      break;
+    case 'MISSION_COUNT':
+      startUpload(f.count);
+      break;
+    case 'MISSION_ITEM_INT':
+      onMissionItem(f);
+      break;
+    case 'MISSION_REQUEST_LIST': // GCS downloads our plan back
+      sendMsg('MISSION_COUNT', { count: missionItems.length, target_system: 255, target_component: 0 });
+      break;
+    case 'MISSION_REQUEST_INT':
+    case 'MISSION_REQUEST': {
+      const it = missionItems[f.seq];
+      if (it) sendMsg('MISSION_ITEM_INT', it);
+      break;
+    }
+    case 'MISSION_ACK': // GCS finished downloading
+    case 'HEARTBEAT':
+      break;
+    default:
+      console.log(`gcs → bridge: ${msg.name} (ignored)`);
   }
 });
 
 // The sim is authoritative for arm/mode: HEARTBEAT reflects the last telemetry.
 let vehicle = { armed: true, customMode: 0 };
+let lastReachedSent = -1; // MISSION_ITEM_REACHED fires on the rising edge only
 
 setInterval(() => {
   sendMsg('HEARTBEAT', {
@@ -126,6 +223,11 @@ function relayTelemetry(t) {
     cog: Math.round(t.headingDeg * 100) % 36000,
     fix_type: 3, satellites_visible: 12,
   });
+  if (t.missionSeq >= 0) sendMsg('MISSION_CURRENT', { seq: t.missionSeq });
+  if (t.missionReached >= 0 && t.missionReached !== lastReachedSent) {
+    lastReachedSent = t.missionReached;
+    sendMsg('MISSION_ITEM_REACHED', { seq: t.missionReached });
+  }
 }
 
 // --- HTTP: static sim + telemetry ingest ---------------------------------------

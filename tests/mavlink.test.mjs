@@ -18,6 +18,15 @@ test('payload lengths match the MAVLink v1 spec', () => {
   assert.equal(payloadLength(MESSAGES.COMMAND_LONG), 33);
   assert.equal(payloadLength(MESSAGES.COMMAND_ACK), 3);
   assert.equal(payloadLength(MESSAGES.SET_MODE), 6);
+  assert.equal(payloadLength(MESSAGES.MISSION_COUNT), 4);
+  assert.equal(payloadLength(MESSAGES.MISSION_REQUEST_LIST), 2);
+  assert.equal(payloadLength(MESSAGES.MISSION_REQUEST), 4);
+  assert.equal(payloadLength(MESSAGES.MISSION_REQUEST_INT), 4);
+  assert.equal(payloadLength(MESSAGES.MISSION_ITEM_INT), 37);
+  assert.equal(payloadLength(MESSAGES.MISSION_ACK), 3);
+  assert.equal(payloadLength(MESSAGES.MISSION_CURRENT), 2);
+  assert.equal(payloadLength(MESSAGES.MISSION_ITEM_REACHED), 2);
+  assert.equal(payloadLength(MESSAGES.COMMAND_INT), 35);
 });
 
 test('heartbeat frame: header layout and wire-order payload', () => {
@@ -42,6 +51,13 @@ test('round-trip: every M1 message encodes → decodes with crcOk', () => {
     COMMAND_LONG: { param1: 1, param2: 0, param3: 0, param4: 0, param5: 0, param6: 0, param7: 50, command: 400, target_system: 1, target_component: 1, confirmation: 0 },
     COMMAND_ACK: { command: 400, result: 0 },
     SET_MODE: { custom_mode: 15, target_system: 1, base_mode: 1 },
+    MISSION_COUNT: { count: 3, target_system: 1, target_component: 1 },
+    MISSION_REQUEST_INT: { seq: 2, target_system: 1, target_component: 1 },
+    MISSION_ITEM_INT: { param1: 0, param2: 60, param3: 0, param4: 0, x: 374569000, y: 1264796000, z: 120, seq: 1, command: 16, target_system: 1, target_component: 1, frame: 3, current: 0, autocontinue: 1 },
+    MISSION_ACK: { target_system: 255, target_component: 0, type: 0 },
+    MISSION_CURRENT: { seq: 2 },
+    MISSION_ITEM_REACHED: { seq: 1 },
+    COMMAND_INT: { param1: 0, param2: 0, param3: 0, param4: 0, x: 374569000, y: 1264796000, z: 140, command: 192, target_system: 1, target_component: 1, frame: 3, current: 0, autocontinue: 0 },
   };
   for (const [name, fields] of Object.entries(samples)) {
     const msg = decode(encode(name, fields, { seq: 42 }));

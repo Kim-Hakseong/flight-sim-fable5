@@ -6,6 +6,11 @@
 
 import { G, MAX_RATE } from './physics.js';
 import { eulerFromQuat, headingDeg } from './telemetry.js';
+import { missionStep, horizontalDistance } from './missions.js';
+
+// Must exceed the achievable turn radius (V²/g·tanφ ≈ 280 m at 40 m/s, 30° bank),
+// or the loiter rails the bank, bleeds lift, and spirals in.
+export const LOITER_RADIUS_M = 300;
 
 // ArduPlane custom_mode numbers — QGC shows these names for autopilot=3.
 export const MODES = { MANUAL: 0, AUTO: 10, RTL: 11, LOITER: 12, TAKEOFF: 13, GUIDED: 15 };
@@ -44,17 +49,21 @@ export function holdControls(state, targetAlt, targetHeading, throttleBase = 0.7
   return { pitch, roll, yaw, throttle };
 }
 
-// One guidance step. ap: { mode, landing, targetAlt, targetHeading }.
-// Returns { controls, ap, disarm } — ap may transition (pure: fresh object).
+// One guidance step. ap: { mode, landing, targetAlt, targetHeading,
+// guided: {x,z,alt}|null, mission: {targets,idx}|null }.
+// Returns { controls, ap, disarm, reached } — ap may transition (pure: fresh object).
 export function apStep(state, ap) {
   let next = ap;
+  let stepReached = []; // waypoint seqs completed during this step
+  const out = (controls, apOut = next, disarm = false, reached = stepReached) =>
+    ({ controls, ap: apOut, disarm, reached });
 
   if (ap.landing) {
     const c = holdControls(state, -50, ap.targetHeading, 0); // drive alt down
     const flare = state.pos[1] < 15 ? 0.6 : 1; // shallow the sink near the ground
     const controls = { ...c, throttle: 0, pitch: c.pitch * flare };
     const down = state.pos[1] <= 0.5 && Math.hypot(state.vel[0], state.vel[2]) < 3;
-    return { controls, ap: next, disarm: down };
+    return out(controls, next, down);
   }
 
   switch (ap.mode) {
@@ -64,21 +73,55 @@ export function apStep(state, ap) {
         break;
       }
       const c = holdControls(state, ap.targetAlt, ap.targetHeading, 1);
-      return { controls: { ...c, throttle: 1 }, ap, disarm: false };
+      return out({ ...c, throttle: 1 }, ap);
     }
     case MODES.RTL: {
       const dist = Math.hypot(state.pos[0], state.pos[2]);
-      if (dist < 150) {
+      if (dist < LOITER_RADIUS_M) {
         next = { ...ap, landing: true };
         break;
       }
-      const controls = holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos));
-      return { controls, ap, disarm: false };
+      return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos)), ap);
+    }
+    case MODES.AUTO: {
+      if (!ap.mission) break; // no plan yet: hold
+      const ms = missionStep(state.pos, ap.mission);
+      next = { ...ap, mission: ms.mission };
+      stepReached = ms.reached;
+      if (ms.action === 'land') {
+        const brg = bearingToDeg(state.pos, [ms.target.x, 0, ms.target.z]);
+        next = { ...next, landing: true, targetHeading: brg };
+        break;
+      }
+      if (ms.action === 'rtl') {
+        next = { ...next, mode: MODES.RTL };
+        return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos)), next);
+      }
+      if (ms.action === 'done') break; // mission complete: hold here
+      const brg = bearingToDeg(state.pos, [ms.target.x, 0, ms.target.z]);
+      return out(holdControls(state, ms.target.alt, brg), next);
+    }
+    case MODES.GUIDED: {
+      if (!ap.guided) break; // no target: hold
+      const t = ap.guided;
+      const dist = horizontalDistance(state.pos, t);
+      // Far out: fly straight at it. Near: chase a carrot on the loiter circle —
+      // the radial through the aircraft, swung ~80° ahead, scaled to the radius.
+      let aim = [t.x, 0, t.z];
+      if (dist < 2 * LOITER_RADIUS_M) {
+        const dx = (state.pos[0] - t.x) / (dist || 1);
+        const dz = (state.pos[2] - t.z) / (dist || 1);
+        const a = (80 * Math.PI) / 180;
+        const rx = dx * Math.cos(a) - dz * Math.sin(a);
+        const rz = dx * Math.sin(a) + dz * Math.cos(a);
+        aim = [t.x + rx * LOITER_RADIUS_M, 0, t.z + rz * LOITER_RADIUS_M];
+      }
+      return out(holdControls(state, t.alt, bearingToDeg(state.pos, aim)), ap);
     }
     default:
-      break; // GUIDED / AUTO / LOITER: hold captured alt + heading (targets land in M3)
+      break; // MANUAL(landing)/LOITER: hold captured alt + heading
   }
 
   const controls = holdControls(state, next.targetAlt, next.targetHeading);
-  return { controls, ap: next, disarm: false };
+  return out(controls);
 }

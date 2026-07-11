@@ -70,3 +70,19 @@
 - **M3 — GUIDED + missions**: mission upload handshake (MISSION_COUNT → REQUEST_INT → ITEM_INT → ACK), waypoint sequencing, DO_REPOSITION go-to, MISSION_CURRENT / MISSION_ITEM_REACHED.
 **Notes**:
 - QGC ARM/DISARM now cuts/restores the engine; TAKEOFF/LAND/RTL fly real (simple) profiles. Verified end-to-end at packet level; visual QGC pass still pending (QGC not installed here).
+
+## 2026-07-11 — M3: GUIDED + missions
+
+**Status**: GREEN
+**Files changed**: bridge/mavlink.mjs, bridge/server.mjs, src/missions.js, src/autopilot.js, src/telemetry.js, src/main.js, tests/missions.test.mjs, tests/mavlink.test.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 36/36 pass · console 0 ✓ · gcs-loop-check PASS (33/33, incl. upload handshake, download-back, DO_REPOSITION, MISSION_CURRENT/ITEM_REACHED) · determinism ✓
+**Decisions**:
+- Mission protocol lives in the bridge (COUNT→REQUEST_INT→ITEM_INT→ACK with a 700 ms retry / 8-try give-up); the accepted plan ships to the sim as ONE SSE event — the sim never sees handshake timing, so it stays deterministic.
+- Bridge also answers the download side (REQUEST_LIST / REQUEST(_INT)) from the stored plan, since QGC re-reads a plan to verify the upload.
+- Loiter radius = 300 m: first attempt (150 m) was inside the achievable turn radius (V²/g·tanφ ≈ 280 m) — the orbit railed the bank, bled lift, and spiralled in. Guided loiter chases a carrot on the circle (radial swung 80° ahead), which settles to a stable ~230 m orbit.
+- DO_REPOSITION accepted in both COMMAND_INT (QGC's form) and COMMAND_LONG; MAV_CMD_MISSION_START → AUTO.
+- Unsupported mission items are sequenced through (not flown) so a plan never stalls; LAND/RTL items become the M2 landing/RTL behaviors.
+**Next**:
+- **M4 — Parameters**: PARAM_REQUEST_LIST / PARAM_REQUEST_READ / PARAM_SET for autopilot gains + sensor sigmas, shared param table, range clamping.
+**Notes**:
+- QGC flow now works end-to-end at packet level: upload a plan → slide-to-start (MISSION_START) → it flies waypoints and reports progress; "Go to location" reroutes into a stable orbit.

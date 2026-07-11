@@ -139,6 +139,63 @@ try {
   const nak = await waitFor('COMMAND_ACK');
   check(nak?.fields.result === 3, 'unknown command → COMMAND_ACK(UNSUPPORTED)');
 
+  // 3b) M3 mission upload handshake: COUNT → REQUEST_INT×n → ITEM_INT×n → ACK.
+  const wpItem = (seq, lat, lon, alt, command = 16) => ({
+    param1: 0, param2: 0, param3: 0, param4: 0,
+    x: Math.round(lat * 1e7), y: Math.round(lon * 1e7), z: alt,
+    seq, command, target_system: 1, target_component: 1, frame: 3, current: 0, autocontinue: 1,
+  });
+  const plan = [wpItem(0, 37.4569, 126.4796, 120), wpItem(1, 37.4569, 126.4936, 150)];
+
+  received.delete('MISSION_REQUEST_INT');
+  received.delete('MISSION_ACK');
+  await sendToBridge('MISSION_COUNT', { count: 2, target_system: 1, target_component: 1 });
+  let req = await waitFor('MISSION_REQUEST_INT');
+  check(req?.fields.seq === 0, 'MISSION_COUNT → MISSION_REQUEST_INT(0)');
+  received.delete('MISSION_REQUEST_INT');
+  await sendToBridge('MISSION_ITEM_INT', plan[0]);
+  req = await waitFor('MISSION_REQUEST_INT');
+  check(req?.fields.seq === 1, 'item 0 accepted → MISSION_REQUEST_INT(1)');
+  await sendToBridge('MISSION_ITEM_INT', plan[1]);
+  const mAck = await waitFor('MISSION_ACK');
+  check(mAck?.fields.type === 0, 'upload complete → MISSION_ACK(ACCEPTED)');
+  const missionEvt = await sseWait((e) => e.type === 'mission');
+  check(missionEvt?.items.length === 2 && Math.abs(missionEvt.items[1].lat - 37.4569) < 1e-6,
+    'mission relayed to the sim over SSE (2 items, lat intact)');
+
+  // Download it back, like QGC verifying an upload.
+  received.delete('MISSION_COUNT');
+  await sendToBridge('MISSION_REQUEST_LIST', { target_system: 1, target_component: 1 });
+  const cnt = await waitFor('MISSION_COUNT');
+  check(cnt?.fields.count === 2, 'MISSION_REQUEST_LIST → MISSION_COUNT(2)');
+  received.delete('MISSION_ITEM_INT');
+  await sendToBridge('MISSION_REQUEST_INT', { seq: 1, target_system: 1, target_component: 1 });
+  const item = await waitFor('MISSION_ITEM_INT');
+  check(item?.fields.seq === 1 && item.fields.x === plan[1].x, 'MISSION_REQUEST_INT(1) → stored item back');
+
+  // 3c) GUIDED go-to via COMMAND_INT DO_REPOSITION.
+  received.delete('COMMAND_ACK');
+  await sendToBridge('COMMAND_INT', {
+    param1: 0, param2: 0, param3: 0, param4: 0,
+    x: Math.round(37.46 * 1e7), y: Math.round(126.47 * 1e7), z: 140,
+    command: 192, target_system: 1, target_component: 1, frame: 3, current: 0, autocontinue: 0,
+  });
+  const rAck = await waitFor('COMMAND_ACK');
+  check(rAck?.fields.command === 192 && rAck.fields.result === 0, 'DO_REPOSITION → ACK(ACCEPTED)');
+  const gotoEvt = await sseWait((e) => e.type === 'goto');
+  check(gotoEvt && Math.abs(gotoEvt.lat - 37.46) < 1e-6 && gotoEvt.alt === 140, 'go-to relayed to the sim over SSE');
+
+  // 3d) Mission progress: telemetry drives MISSION_CURRENT + MISSION_ITEM_REACHED.
+  received.delete('MISSION_CURRENT');
+  await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...frame, missionSeq: 1, missionReached: 0 }),
+  });
+  const cur = await waitFor('MISSION_CURRENT');
+  const reachedMsg = await waitFor('MISSION_ITEM_REACHED');
+  check(cur?.fields.seq === 1, 'MISSION_CURRENT follows the sim');
+  check(reachedMsg?.fields.seq === 0, 'MISSION_ITEM_REACHED fires on the reach edge');
+
   // Reconnect: the bridge must replay the last command (monotonic seq dedupe).
   const sse2 = await fetch(`http://127.0.0.1:${httpPort}/commands`);
   const r2 = sse2.body.getReader();
@@ -149,7 +206,7 @@ try {
     if (done) break;
     replay += new TextDecoder().decode(value);
   }
-  check(replay.includes('"type":"mode"'), 'last command replayed on SSE (re)connect');
+  check(replay.includes('"type":"goto"'), 'last command replayed on SSE (re)connect');
   r2.cancel().catch(() => {});
   reader.cancel().catch(() => {});
 

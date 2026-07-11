@@ -57,6 +57,53 @@ export const MESSAGES = {
       ['hdg', 'uint16'],
     ],
   },
+  MISSION_REQUEST: {
+    id: 40, crcExtra: 230,
+    fields: [['seq', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
+  },
+  MISSION_CURRENT: {
+    id: 42, crcExtra: 28,
+    fields: [['seq', 'uint16']],
+  },
+  MISSION_REQUEST_LIST: {
+    id: 43, crcExtra: 132,
+    fields: [['target_system', 'uint8'], ['target_component', 'uint8']],
+  },
+  MISSION_COUNT: {
+    id: 44, crcExtra: 221,
+    fields: [['count', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
+  },
+  MISSION_ITEM_REACHED: {
+    id: 46, crcExtra: 11,
+    fields: [['seq', 'uint16']],
+  },
+  MISSION_ACK: {
+    id: 47, crcExtra: 153,
+    fields: [['target_system', 'uint8'], ['target_component', 'uint8'], ['type', 'uint8']],
+  },
+  MISSION_REQUEST_INT: {
+    id: 51, crcExtra: 196,
+    fields: [['seq', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
+  },
+  MISSION_ITEM_INT: {
+    id: 73, crcExtra: 38,
+    fields: [
+      ['param1', 'float'], ['param2', 'float'], ['param3', 'float'], ['param4', 'float'],
+      ['x', 'int32'], ['y', 'int32'], ['z', 'float'],
+      ['seq', 'uint16'], ['command', 'uint16'],
+      ['target_system', 'uint8'], ['target_component', 'uint8'], ['frame', 'uint8'],
+      ['current', 'uint8'], ['autocontinue', 'uint8'],
+    ],
+  },
+  COMMAND_INT: {
+    id: 75, crcExtra: 158,
+    fields: [
+      ['param1', 'float'], ['param2', 'float'], ['param3', 'float'], ['param4', 'float'],
+      ['x', 'int32'], ['y', 'int32'], ['z', 'float'], ['command', 'uint16'],
+      ['target_system', 'uint8'], ['target_component', 'uint8'], ['frame', 'uint8'],
+      ['current', 'uint8'], ['autocontinue', 'uint8'],
+    ],
+  },
   COMMAND_LONG: {
     id: 76, crcExtra: 152,
     fields: [
