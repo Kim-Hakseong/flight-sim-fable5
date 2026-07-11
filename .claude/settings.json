@@ -1,0 +1,17 @@
+{
+  "model": "claude-fable-5",
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm run bridge)",
+      "Bash(node --test:*)",
+      "Bash(node tests/:*)",
+      "Bash(python3 -m http.server:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ]
+  }
+}
