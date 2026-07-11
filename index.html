@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>flight-sim-fable5</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1020; }
+    #hud {
+      position: fixed; top: 10px; left: 10px; z-index: 10;
+      color: #9fe870; font: 13px/1.5 ui-monospace, Menlo, monospace;
+      background: rgba(0, 0, 0, 0.45); padding: 8px 12px; border-radius: 6px;
+      white-space: pre; pointer-events: none;
+    }
+    #help {
+      position: fixed; bottom: 10px; left: 10px; z-index: 10;
+      color: #8a93a6; font: 11px/1.5 ui-monospace, Menlo, monospace;
+      background: rgba(0, 0, 0, 0.35); padding: 6px 10px; border-radius: 6px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">loading…</div>
+  <div id="help">↑/↓ pitch · ←/→ roll · A/D yaw · W/S throttle · R reset</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
