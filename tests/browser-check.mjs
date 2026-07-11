@@ -113,16 +113,22 @@ try {
     const a = window.__state();
     window.__reset(); window.__advance(10);
     const b = window.__state();
-    return { match: a === b, sample: a.slice(0, 120) };
+    window.__reset(); window.injectFault('gps', 'bias', { bias: 100 }); window.__advance(5);
+    const c = window.__state();
+    window.__reset(); window.injectFault('gps', 'bias', { bias: 100 }); window.__advance(5);
+    const d = window.__state();
+    window.clearFault('gps'); window.__reset();
+    return { match: a === b, faultMatch: c === d && c !== a, sample: a.slice(0, 120) };
   })()`);
 
   console.log(`page:        ${pageUrl}`);
   console.log(`console errors: ${consoleErrors.length}`);
   consoleErrors.forEach((e) => console.log(`  ✗ ${e}`));
   console.log(`__advance reproducible: ${det.match}`);
+  console.log(`__advance + injectFault reproducible: ${det.faultMatch}`);
   console.log(`  state: ${det.sample}…`);
 
-  if (consoleErrors.length > 0 || !det.match) failed = true;
+  if (consoleErrors.length > 0 || !det.match || !det.faultMatch) failed = true;
   ws.close();
 } catch (err) {
   console.error(`browser check error: ${err.message}`);

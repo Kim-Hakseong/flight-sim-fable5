@@ -102,3 +102,19 @@
 - **M5 — HILS faults visible in the GCS**: sensor error model (scale/bias/noise/lag) + `injectFault` (freeze/dropout/bias), SYS_STATUS sensor-health bits + STATUSTEXT on fault edges.
 **Notes**:
 - In QGC's param screen the vehicle now lists AP_*/SNS_* params; editing AP_BANK_MAX etc. visibly changes turn behavior mid-flight.
+
+## 2026-07-11 — M5: HILS faults visible in the GCS
+
+**Status**: GREEN
+**Files changed**: src/prng.js, src/sensors.js, src/telemetry.js, src/main.js, bridge/mavlink.mjs, bridge/server.mjs, tests/sensors.test.mjs, tests/mavlink.test.mjs, tests/gcs-loop-check.mjs, tests/browser-check.mjs
+**Tests**: unit 47/47 pass · console 0 ✓ · gcs-loop-check PASS (42/42, incl. health bits + STATUSTEXT edges) · determinism ✓ (incl. NEW faulted-run reproducibility in browser)
+**Decisions**:
+- PRNG is pure-functional mulberry32 ([value, nextState] pairs) — sensor state threads it explicitly, so a faulted run replays bit-identically (checked in the browser gate).
+- Every sensor draws its noise even while faulted, so injecting one fault cannot shift the other sensors' streams (unit-tested).
+- GPS_RAW_INT + VFR_HUD altimeter feed from the SENSED values (fault-visible in QGC); GLOBAL_POSITION_INT stays the fused/true estimate until the M6 estimator.
+- Fault → health bit drops immediately (sim self-reports; estimator-based FDE can refine in M6); dropout holds the last GPS fix with fix_type=1/sats=0 like a real receiver.
+- `window.injectFault(sensor, type, opts)` / `window.clearFault(sensor)` — the HILS surface CLAUDE.md pins down.
+**Next**:
+- **M6 — Telemetry completeness**: deterministic battery drain in SYS_STATUS, EKF_STATUS_REPORT from estimator health, lifecycle STATUSTEXT (arm/mode/nav), mission progress rounding-out.
+**Notes**:
+- Demo: browser console → `injectFault('gps','bias',{bias:200})` → QGC map track jumps 200 m + GPS goes red + "GPS fault: bias" toast; `clearFault('gps')` recovers.

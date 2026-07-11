@@ -68,6 +68,22 @@ export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true,
     throttlePct: Math.round(throttle * 100),
     armed: vehicle.armed, customMode: vehicle.customMode,
     missionSeq: vehicle.missionSeq ?? -1, missionReached: vehicle.missionReached ?? -1,
+    ...sensedFields(geo, state, vehicle),
+  };
+}
+
+// GPS_RAW_INT / VFR_HUD are fed from the SENSED values (fault-visible in the GCS);
+// GLOBAL_POSITION_INT above stays the fused/true estimate. gps: [x, z, relAlt]|null.
+function sensedFields(trueGeo, state, vehicle) {
+  const gps = vehicle.gps; // last good reading is the caller's job to hold
+  const geo = gps ? localToGeodetic([gps[0], gps[2], gps[1]]) : trueGeo;
+  const dropout = vehicle.gpsDropout === true;
+  return {
+    gpsLat: geo.lat, gpsLon: geo.lon, gpsAlt: geo.alt,
+    gpsFix: dropout ? 1 : 3, gpsSats: dropout ? 0 : 12,
+    baroAlt: (vehicle.baroAlt ?? state.pos[1]) + HOME.alt,
+    health: vehicle.health ?? 47, // SENSORS_PRESENT (gyro|accel|mag|baro|gps)
+    faults: vehicle.faults ?? {},
   };
 }
 

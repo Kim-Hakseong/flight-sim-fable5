@@ -17,11 +17,15 @@ const TYPES = {
   int16: { size: 2, get: (v, o) => v.getInt16(o, true), set: (v, o, x) => v.setInt16(o, x, true) },
   uint8: { size: 1, get: (v, o) => v.getUint8(o), set: (v, o, x) => v.setUint8(o, x & 0xff) },
   int8: { size: 1, get: (v, o) => v.getInt8(o), set: (v, o, x) => v.setInt8(o, x) },
-  char16: { // fixed 16-byte, NUL-padded string (param_id); sorts as a 1-byte array
-    size: 16,
+};
+
+// Fixed-size NUL-padded ASCII strings (param_id, statustext); sort as 1-byte arrays.
+for (const n of [16, 50]) {
+  TYPES[`char${n}`] = {
+    size: n,
     get: (v, o) => {
       let s = '';
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < n; i++) {
         const c = v.getUint8(o + i);
         if (c === 0) break;
         s += String.fromCharCode(c);
@@ -30,10 +34,10 @@ const TYPES = {
     },
     set: (v, o, x) => {
       const s = String(x ?? '');
-      for (let i = 0; i < 16; i++) v.setUint8(o + i, i < s.length ? s.charCodeAt(i) & 0x7f : 0);
+      for (let i = 0; i < n; i++) v.setUint8(o + i, i < s.length ? s.charCodeAt(i) & 0x7f : 0);
     },
-  },
-};
+  };
+}
 
 // name → { id, crcExtra, fields: [[fieldName, type], …] in wire order }
 export const MESSAGES = {
@@ -43,6 +47,23 @@ export const MESSAGES = {
       ['custom_mode', 'uint32'], ['type', 'uint8'], ['autopilot', 'uint8'],
       ['base_mode', 'uint8'], ['system_status', 'uint8'], ['mavlink_version', 'uint8'],
     ],
+  },
+  SYS_STATUS: {
+    id: 1, crcExtra: 124,
+    fields: [
+      ['onboard_control_sensors_present', 'uint32'],
+      ['onboard_control_sensors_enabled', 'uint32'],
+      ['onboard_control_sensors_health', 'uint32'],
+      ['load', 'uint16'], ['voltage_battery', 'uint16'], ['current_battery', 'int16'],
+      ['drop_rate_comm', 'uint16'], ['errors_comm', 'uint16'],
+      ['errors_count1', 'uint16'], ['errors_count2', 'uint16'],
+      ['errors_count3', 'uint16'], ['errors_count4', 'uint16'],
+      ['battery_remaining', 'int8'],
+    ],
+  },
+  STATUSTEXT: {
+    id: 253, crcExtra: 83,
+    fields: [['severity', 'uint8'], ['text', 'char50']],
   },
   SET_MODE: {
     id: 11, crcExtra: 89,

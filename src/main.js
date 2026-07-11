@@ -10,6 +10,7 @@ import { startMissionLink } from './missionLink.js';
 import { toLocalTargets } from './missions.js';
 import { geodeticToLocal } from './telemetry.js';
 import { defaultParams, clampParam } from './params.js';
+import { createSensors, stepSensors, injectFault, clearFault } from './sensors.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -30,6 +31,10 @@ let ap = {
 let lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
 let lastReached = -1; // last mission seq completed (edge → MISSION_ITEM_REACHED)
 let params = defaultParams(); // live-tunable via PARAM_SET; persists across resets
+const SENSOR_SEED = 1;
+let sensors = createSensors(SENSOR_SEED);
+let readings = null; // latest sensor sweep (feeds telemetry)
+let lastGps = null; // held through dropouts, like a real receiver's last fix
 
 function setMode(m) {
   const e = eulerFromQuat(state.quat);
@@ -105,6 +110,10 @@ function stepSim(dt) {
 
   lastControls = controls;
   state = stepAircraft(state, controls, dt);
+  const sw = stepSensors(sensors, state, params);
+  sensors = sw.sensors;
+  readings = sw.readings;
+  if (readings.gps) lastGps = readings.gps;
   simTime += dt;
 }
 
@@ -119,6 +128,9 @@ function reset() {
   };
   lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
   lastReached = -1;
+  sensors = createSensors(SENSOR_SEED);
+  readings = null;
+  lastGps = null;
   keys.clear();
 }
 
@@ -130,8 +142,10 @@ window.__advance = (seconds, dt = DT) => {
   return window.__state();
 };
 window.__reset = () => reset();
-window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, ...state });
+window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, ...state });
 window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for tests/HILS
+window.injectFault = (sensor, type, opts) => { sensors = injectFault(sensors, sensor, type, opts); };
+window.clearFault = (sensor) => { sensors = clearFault(sensors, sensor); };
 
 // --- Scene -------------------------------------------------------------------
 const scene = new THREE.Scene();
@@ -226,6 +240,8 @@ startTelemetry(() =>
     armed, customMode: ap.mode,
     missionSeq: ap.mission ? Math.min(ap.mission.idx, ap.mission.targets.length - 1) : -1,
     missionReached: lastReached,
+    gps: lastGps, gpsDropout: readings ? !readings.gps : false,
+    baroAlt: readings?.baro?.[0], health: readings?.health, faults: readings?.faults,
   })
 ).then((on) => {
   if (on) {

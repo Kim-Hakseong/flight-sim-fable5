@@ -31,6 +31,27 @@ test('payload lengths match the MAVLink v1 spec', () => {
   assert.equal(payloadLength(MESSAGES.PARAM_REQUEST_LIST), 2);
   assert.equal(payloadLength(MESSAGES.PARAM_VALUE), 25);
   assert.equal(payloadLength(MESSAGES.PARAM_SET), 23);
+  assert.equal(payloadLength(MESSAGES.SYS_STATUS), 31);
+  assert.equal(payloadLength(MESSAGES.STATUSTEXT), 51);
+});
+
+test('statustext + sys_status round-trip (char50, health bits)', () => {
+  const st = decode(encode('STATUSTEXT', { severity: 4, text: 'GPS fault: bias' }));
+  assert.equal(st.crcOk, true);
+  assert.equal(st.fields.severity, 4);
+  assert.equal(st.fields.text, 'GPS fault: bias');
+
+  const ss = decode(encode('SYS_STATUS', {
+    onboard_control_sensors_present: 47, onboard_control_sensors_enabled: 47,
+    onboard_control_sensors_health: 47 & ~32, // GPS unhealthy
+    load: 250, voltage_battery: 12600, current_battery: -1,
+    drop_rate_comm: 0, errors_comm: 0,
+    errors_count1: 0, errors_count2: 0, errors_count3: 0, errors_count4: 0,
+    battery_remaining: -1,
+  }));
+  assert.equal(ss.crcOk, true);
+  assert.equal(ss.fields.onboard_control_sensors_health, 15);
+  assert.equal(ss.fields.battery_remaining, -1);
 });
 
 test('char16: param ids pad with NULs and round-trip; 16-char ids fit exactly', () => {

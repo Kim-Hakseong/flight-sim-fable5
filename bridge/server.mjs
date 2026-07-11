@@ -216,6 +216,21 @@ udp.on('message', (buf, rinfo) => {
 // The sim is authoritative for arm/mode: HEARTBEAT reflects the last telemetry.
 let vehicle = { armed: true, customMode: 0 };
 let lastReachedSent = -1; // MISSION_ITEM_REACHED fires on the rising edge only
+let lastFaults = {}; // sensor → fault type; STATUSTEXT fires on every edge
+
+function statusTextOnFaultEdges(faults = {}) {
+  for (const [sensor, type] of Object.entries(faults)) {
+    if (lastFaults[sensor] !== type) {
+      sendMsg('STATUSTEXT', { severity: 4, text: `${sensor.toUpperCase()} fault: ${type}` }); // WARNING
+    }
+  }
+  for (const sensor of Object.keys(lastFaults)) {
+    if (!(sensor in faults)) {
+      sendMsg('STATUSTEXT', { severity: 6, text: `${sensor.toUpperCase()} fault cleared` }); // INFO
+    }
+  }
+  lastFaults = faults;
+}
 
 setInterval(() => {
   sendMsg('HEARTBEAT', {
@@ -243,17 +258,28 @@ function relayTelemetry(t) {
     hdg: Math.round(t.headingDeg * 100) % 36000,
   });
   sendMsg('VFR_HUD', {
-    airspeed: t.airspeed, groundspeed: t.groundspeed, alt: t.alt, climb: t.climb,
+    airspeed: t.airspeed, groundspeed: t.groundspeed,
+    alt: t.baroAlt ?? t.alt, climb: t.climb, // altimeter = the (faultable) baro
     heading: Math.round(t.headingDeg), throttle: t.throttlePct,
   });
   sendMsg('GPS_RAW_INT', {
     time_usec: BigInt(ms) * 1000n,
-    lat: Math.round(t.lat * 1e7), lon: Math.round(t.lon * 1e7),
-    alt: Math.round(t.alt * 1000),
+    lat: Math.round((t.gpsLat ?? t.lat) * 1e7), lon: Math.round((t.gpsLon ?? t.lon) * 1e7),
+    alt: Math.round((t.gpsAlt ?? t.alt) * 1000),
     eph: 80, epv: 120, vel: Math.round(t.groundspeed * 100),
     cog: Math.round(t.headingDeg * 100) % 36000,
-    fix_type: 3, satellites_visible: 12,
+    fix_type: t.gpsFix ?? 3, satellites_visible: t.gpsSats ?? 12,
   });
+  const health = (t.health ?? 47) >>> 0;
+  sendMsg('SYS_STATUS', {
+    onboard_control_sensors_present: 47, onboard_control_sensors_enabled: 47,
+    onboard_control_sensors_health: health,
+    load: 250, voltage_battery: 12600, current_battery: -1,
+    drop_rate_comm: 0, errors_comm: 0,
+    errors_count1: 0, errors_count2: 0, errors_count3: 0, errors_count4: 0,
+    battery_remaining: -1, // a real drain model lands in M6
+  });
+  statusTextOnFaultEdges(t.faults);
   if (t.missionSeq >= 0) sendMsg('MISSION_CURRENT', { seq: t.missionSeq });
   if (t.missionReached >= 0 && t.missionReached !== lastReachedSent) {
     lastReachedSent = t.missionReached;

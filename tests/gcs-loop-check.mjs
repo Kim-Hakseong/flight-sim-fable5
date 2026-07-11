@@ -223,6 +223,34 @@ try {
   check(paramEvt?.id === 'AP_THR_CRUISE' && Math.abs(paramEvt.value - 1) < 1e-6, 'clamped param relayed to the sim over SSE');
   gcs.off('message', collectParams);
 
+  // 3f) M5 faults: health bits + STATUSTEXT on the inject and clear edges.
+  const texts = [];
+  const collectTexts = (buf) => {
+    const m = decode(buf);
+    if (m?.name === 'STATUSTEXT') texts.push(m.fields);
+  };
+  gcs.on('message', collectTexts);
+  received.delete('SYS_STATUS');
+  await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...frame, health: 47 & ~32, faults: { gps: 'bias' }, gpsFix: 3, gpsSats: 12 }),
+  });
+  let sys = await waitFor('SYS_STATUS');
+  check((sys?.fields.onboard_control_sensors_health & 32) === 0, 'SYS_STATUS: GPS health bit drops on fault');
+  await new Promise((r) => setTimeout(r, 200));
+  check(texts.some((x) => x.severity === 4 && x.text.includes('GPS fault: bias')), 'STATUSTEXT warning on fault inject');
+
+  received.delete('SYS_STATUS');
+  await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...frame, health: 47, faults: {} }),
+  });
+  sys = await waitFor('SYS_STATUS');
+  check((sys?.fields.onboard_control_sensors_health & 32) === 32, 'SYS_STATUS: GPS healthy again on clear');
+  await new Promise((r) => setTimeout(r, 200));
+  check(texts.some((x) => x.severity === 6 && x.text.includes('GPS fault cleared')), 'STATUSTEXT info on fault clear');
+  gcs.off('message', collectTexts);
+
   // Reconnect: the bridge must replay the last command (monotonic seq dedupe).
   const sse2 = await fetch(`http://127.0.0.1:${httpPort}/commands`);
   const r2 = sse2.body.getReader();
