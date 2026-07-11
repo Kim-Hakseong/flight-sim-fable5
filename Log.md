@@ -135,3 +135,15 @@
 - All PRD milestones (M0–M6) GREEN. Candidates: configure a git remote (auto-push per §0.8), visual QGC pass, autopilot-on-estimate, engineering console (src/engineering.js).
 **Notes**:
 - QGC now shows: depleting battery gauge + current, EKF health that reacts to `injectFault('gps',…)`, and toast messages for arm/mode/waypoint/fault events.
+
+## 2026-07-11 — infra: GitHub remote + push
+
+**Status**: GREEN
+**Files changed**: Log.md (this entry)
+**Tests**: n/a (no code change)
+**Decisions**:
+- Public repo `Kim-Hakseong/flight-sim-fable5` created via gh; `origin` wired, `main` pushed (M-1…M6 all up).
+**Next**:
+- Auto-push per §0.8 is now live: every loop commits AND pushes. Candidates from M6: visual QGC pass, autopilot-on-estimate, engineering console.
+**Notes**:
+- https://github.com/Kim-Hakseong/flight-sim-fable5
