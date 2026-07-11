@@ -11,6 +11,8 @@ import { toLocalTargets } from './missions.js';
 import { geodeticToLocal } from './telemetry.js';
 import { defaultParams, clampParam } from './params.js';
 import { createSensors, stepSensors, injectFault, clearFault } from './sensors.js';
+import { createEstimator, stepEstimator, ekfReport } from './estimator.js';
+import { createBattery, stepBattery, batteryOutputs } from './battery.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -35,6 +37,8 @@ const SENSOR_SEED = 1;
 let sensors = createSensors(SENSOR_SEED);
 let readings = null; // latest sensor sweep (feeds telemetry)
 let lastGps = null; // held through dropouts, like a real receiver's last fix
+let est = createEstimator(state);
+let battery = createBattery();
 
 function setMode(m) {
   const e = eulerFromQuat(state.quat);
@@ -114,6 +118,8 @@ function stepSim(dt) {
   sensors = sw.sensors;
   readings = sw.readings;
   if (readings.gps) lastGps = readings.gps;
+  est = stepEstimator(est, readings, dt);
+  battery = stepBattery(battery, armed ? controls.throttle : 0, dt);
   simTime += dt;
 }
 
@@ -131,6 +137,8 @@ function reset() {
   sensors = createSensors(SENSOR_SEED);
   readings = null;
   lastGps = null;
+  est = createEstimator(state);
+  battery = createBattery();
   keys.clear();
 }
 
@@ -142,7 +150,7 @@ window.__advance = (seconds, dt = DT) => {
   return window.__state();
 };
 window.__reset = () => reset();
-window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, ...state });
+window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, est, battery, ...state });
 window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for tests/HILS
 window.injectFault = (sensor, type, opts) => { sensors = injectFault(sensors, sensor, type, opts); };
 window.clearFault = (sensor) => { sensors = clearFault(sensors, sensor); };
@@ -242,6 +250,8 @@ startTelemetry(() =>
     missionReached: lastReached,
     gps: lastGps, gpsDropout: readings ? !readings.gps : false,
     baroAlt: readings?.baro?.[0], health: readings?.health, faults: readings?.faults,
+    est, ekf: ekfReport(est, readings),
+    ...batteryOutputs(battery, lastControls.throttle),
   })
 ).then((on) => {
   if (on) {

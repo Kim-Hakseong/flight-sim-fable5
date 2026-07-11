@@ -8,6 +8,7 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encode, decode } from './mavlink.mjs';
 import { PARAM_DEFS, PARAM_TYPE_REAL32, defaultParams, clampParam } from '../src/params.js';
+import { MODE_NAMES } from '../src/autopilot.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const HTTP_PORT = Number(process.env.BRIDGE_HTTP_PORT ?? 8765);
@@ -218,6 +219,25 @@ let vehicle = { armed: true, customMode: 0 };
 let lastReachedSent = -1; // MISSION_ITEM_REACHED fires on the rising edge only
 let lastFaults = {}; // sensor → fault type; STATUSTEXT fires on every edge
 
+// Lifecycle STATUSTEXT: announce arm/mode/waypoint transitions like a real AP.
+let lifecycle = null; // { armed, customMode, missionReached }
+
+function statusTextOnLifecycleEdges(t) {
+  const now = { armed: !!t.armed, customMode: t.customMode >>> 0, missionReached: t.missionReached ?? -1 };
+  if (lifecycle) {
+    if (now.armed !== lifecycle.armed) {
+      sendMsg('STATUSTEXT', { severity: 6, text: now.armed ? 'Arming motors' : 'Disarming motors' });
+    }
+    if (now.customMode !== lifecycle.customMode) {
+      sendMsg('STATUSTEXT', { severity: 6, text: `Mode changed to ${MODE_NAMES[now.customMode] ?? now.customMode}` });
+    }
+    if (now.missionReached >= 0 && now.missionReached !== lifecycle.missionReached) {
+      sendMsg('STATUSTEXT', { severity: 6, text: `Reached waypoint #${now.missionReached}` });
+    }
+  }
+  lifecycle = now;
+}
+
 function statusTextOnFaultEdges(faults = {}) {
   for (const [sensor, type] of Object.entries(faults)) {
     if (lastFaults[sensor] !== type) {
@@ -274,12 +294,14 @@ function relayTelemetry(t) {
   sendMsg('SYS_STATUS', {
     onboard_control_sensors_present: 47, onboard_control_sensors_enabled: 47,
     onboard_control_sensors_health: health,
-    load: 250, voltage_battery: 12600, current_battery: -1,
+    load: 250, voltage_battery: t.battMv ?? 12600, current_battery: t.battCa ?? -1,
     drop_rate_comm: 0, errors_comm: 0,
     errors_count1: 0, errors_count2: 0, errors_count3: 0, errors_count4: 0,
-    battery_remaining: -1, // a real drain model lands in M6
+    battery_remaining: t.battPct ?? -1,
   });
+  if (t.ekf) sendMsg('EKF_STATUS_REPORT', t.ekf);
   statusTextOnFaultEdges(t.faults);
+  statusTextOnLifecycleEdges(t);
   if (t.missionSeq >= 0) sendMsg('MISSION_CURRENT', { seq: t.missionSeq });
   if (t.missionReached >= 0 && t.missionReached !== lastReachedSent) {
     lastReachedSent = t.missionReached;

@@ -53,14 +53,18 @@ export function headingDeg(yawRad) {
 
 // Full snapshot the bridge needs, from a sim state + throttle + sim time.
 export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true, customMode: 0 }) {
-  const geo = localToGeodetic(state.pos);
+  // GLOBAL_POSITION_INT is the FUSED estimate: fed by the nav estimator when one
+  // is running, so estimator behavior (coasting, gating) is what the GCS map shows.
+  const navPos = vehicle.est?.pos ?? state.pos;
+  const navVel = vehicle.est?.vel ?? state.vel;
+  const geo = localToGeodetic(navPos);
   const e = eulerFromQuat(state.quat);
   const rates = bodyRatesToFrd(state.omega);
-  const [vx, vy, vz] = state.vel;
-  const speed = Math.hypot(vx, vy, vz);
+  const [vx, vy, vz] = navVel;
+  const speed = Math.hypot(...state.vel); // air data stays true airspeed
   return {
     timeBootMs: Math.round(simTime * 1000),
-    lat: geo.lat, lon: geo.lon, alt: geo.alt, relAlt: state.pos[1],
+    lat: geo.lat, lon: geo.lon, alt: geo.alt, relAlt: navPos[1],
     roll: e.roll, pitch: e.pitch, yaw: e.yaw, ...rates,
     vn: -vz, ve: vx, vd: -vy,
     headingDeg: headingDeg(e.yaw),
@@ -68,6 +72,8 @@ export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true,
     throttlePct: Math.round(throttle * 100),
     armed: vehicle.armed, customMode: vehicle.customMode,
     missionSeq: vehicle.missionSeq ?? -1, missionReached: vehicle.missionReached ?? -1,
+    ekf: vehicle.ekf ?? null,
+    battMv: vehicle.battMv ?? 12600, battCa: vehicle.battCa ?? -1, battPct: vehicle.battPct ?? -1,
     ...sensedFields(geo, state, vehicle),
   };
 }

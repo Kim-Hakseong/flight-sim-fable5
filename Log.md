@@ -118,3 +118,20 @@
 - **M6 — Telemetry completeness**: deterministic battery drain in SYS_STATUS, EKF_STATUS_REPORT from estimator health, lifecycle STATUSTEXT (arm/mode/nav), mission progress rounding-out.
 **Notes**:
 - Demo: browser console → `injectFault('gps','bias',{bias:200})` → QGC map track jumps 200 m + GPS goes red + "GPS fault: bias" toast; `clearFault('gps')` recovers.
+
+## 2026-07-11 — M6: telemetry completeness
+
+**Status**: GREEN
+**Files changed**: src/battery.js, src/estimator.js, src/telemetry.js, src/main.js, bridge/mavlink.mjs, bridge/server.mjs, tests/estimator.test.mjs, tests/mavlink.test.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 52/52 pass · console 0 ✓ · gcs-loop-check PASS (47/47) · determinism ✓ (battery/est in `__state`)
+**Decisions**:
+- Battery: I = base + max·throttle², dt-integrated only (constitution §0.5); voltage = SoC ramp − load sag; ≈ 29 min endurance at cruise. Disarmed → avionics-floor draw.
+- Estimator: gated position filter over GPS+baro with 5σ innovation rejection (FDE). A 500 m GPS bias is rejected — the estimate coasts, variance grows, POS_HORIZ_ABS drops (unit-tested); QGC's EKF widget goes red on a nav fault.
+- GLOBAL_POSITION_INT now carries the ESTIMATOR output (the map shows fused nav, incl. coasting during faults); GPS_RAW_INT/VFR_HUD stay raw-sensor; attitude remains truth until an INS lands.
+- EKF_STATUS_REPORT is ardupilotmega id 193 (we already claim autopilot=3, so QGC listens).
+- Lifecycle STATUSTEXT edges in the bridge: Arming/Disarming motors, "Mode changed to X", "Reached waypoint #N".
+- Autopilot still flies TRUE state, not the estimate — flagged as the natural next refinement if full HILS closure is wanted.
+**Next**:
+- All PRD milestones (M0–M6) GREEN. Candidates: configure a git remote (auto-push per §0.8), visual QGC pass, autopilot-on-estimate, engineering console (src/engineering.js).
+**Notes**:
+- QGC now shows: depleting battery gauge + current, EKF health that reacts to `injectFault('gps',…)`, and toast messages for arm/mode/waypoint/fault events.

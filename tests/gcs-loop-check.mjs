@@ -251,6 +251,39 @@ try {
   check(texts.some((x) => x.severity === 6 && x.text.includes('GPS fault cleared')), 'STATUSTEXT info on fault clear');
   gcs.off('message', collectTexts);
 
+  // 3g) M6 completeness: battery in SYS_STATUS, EKF report, lifecycle STATUSTEXT.
+  const texts6 = [];
+  const collect6 = (buf) => {
+    const m = decode(buf);
+    if (m?.name === 'STATUSTEXT') texts6.push(m.fields);
+  };
+  gcs.on('message', collect6);
+  received.delete('SYS_STATUS');
+  received.delete('EKF_STATUS_REPORT');
+  await fetch(`http://127.0.0.1:${httpPort}/telemetry`, { // prime: armed, MANUAL
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...frame, armed: true, customMode: 0 }),
+  });
+  await new Promise((r) => setTimeout(r, 150));
+  received.delete('SYS_STATUS'); // don't read the priming frame's SYS_STATUS
+  await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      ...frame, battMv: 11800, battCa: 1030, battPct: 72,
+      ekf: { velocity_variance: 0.04, pos_horiz_variance: 0.08, pos_vert_variance: 0.05, compass_variance: 0.05, terrain_alt_variance: 0, flags: 831 },
+      armed: false, customMode: 11, missionReached: 1,
+    }),
+  });
+  const sys6 = await waitFor('SYS_STATUS');
+  check(sys6?.fields.voltage_battery === 11800 && sys6.fields.battery_remaining === 72, 'SYS_STATUS carries the sim battery');
+  const ekf6 = await waitFor('EKF_STATUS_REPORT');
+  check(ekf6?.crcOk && ekf6.fields.flags === 831, 'EKF_STATUS_REPORT relayed with flags');
+  await new Promise((r) => setTimeout(r, 200));
+  check(texts6.some((x) => x.text === 'Disarming motors'), 'STATUSTEXT on arm edge');
+  check(texts6.some((x) => x.text === 'Mode changed to RTL'), 'STATUSTEXT on mode edge');
+  check(texts6.some((x) => x.text === 'Reached waypoint #1'), 'STATUSTEXT on waypoint reach');
+  gcs.off('message', collect6);
+
   // Reconnect: the bridge must replay the last command (monotonic seq dedupe).
   const sse2 = await fetch(`http://127.0.0.1:${httpPort}/commands`);
   const r2 = sse2.body.getReader();

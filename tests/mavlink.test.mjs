@@ -33,6 +33,17 @@ test('payload lengths match the MAVLink v1 spec', () => {
   assert.equal(payloadLength(MESSAGES.PARAM_SET), 23);
   assert.equal(payloadLength(MESSAGES.SYS_STATUS), 31);
   assert.equal(payloadLength(MESSAGES.STATUSTEXT), 51);
+  assert.equal(payloadLength(MESSAGES.EKF_STATUS_REPORT), 22);
+});
+
+test('ekf_status_report round-trip', () => {
+  const m = decode(encode('EKF_STATUS_REPORT', {
+    velocity_variance: 0.05, pos_horiz_variance: 0.1, pos_vert_variance: 0.08,
+    compass_variance: 0.05, terrain_alt_variance: 0, flags: 831,
+  }));
+  assert.equal(m.crcOk, true);
+  assert.equal(m.fields.flags, 831);
+  assert.ok(Math.abs(m.fields.pos_horiz_variance - 0.1) < 1e-6);
 });
 
 test('statustext + sys_status round-trip (char50, health bits)', () => {

@@ -61,6 +61,14 @@ export const MESSAGES = {
       ['battery_remaining', 'int8'],
     ],
   },
+  EKF_STATUS_REPORT: { // ardupilotmega dialect — QGC's EKF health widget
+    id: 193, crcExtra: 71,
+    fields: [
+      ['velocity_variance', 'float'], ['pos_horiz_variance', 'float'],
+      ['pos_vert_variance', 'float'], ['compass_variance', 'float'],
+      ['terrain_alt_variance', 'float'], ['flags', 'uint16'],
+    ],
+  },
   STATUSTEXT: {
     id: 253, crcExtra: 83,
     fields: [['severity', 'uint8'], ['text', 'char50']],
