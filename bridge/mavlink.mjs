@@ -28,6 +28,12 @@ export const MESSAGES = {
       ['base_mode', 'uint8'], ['system_status', 'uint8'], ['mavlink_version', 'uint8'],
     ],
   },
+  SET_MODE: {
+    id: 11, crcExtra: 89,
+    fields: [
+      ['custom_mode', 'uint32'], ['target_system', 'uint8'], ['base_mode', 'uint8'],
+    ],
+  },
   GPS_RAW_INT: {
     id: 24, crcExtra: 24,
     fields: [
@@ -50,6 +56,19 @@ export const MESSAGES = {
       ['relative_alt', 'int32'], ['vx', 'int16'], ['vy', 'int16'], ['vz', 'int16'],
       ['hdg', 'uint16'],
     ],
+  },
+  COMMAND_LONG: {
+    id: 76, crcExtra: 152,
+    fields: [
+      ['param1', 'float'], ['param2', 'float'], ['param3', 'float'], ['param4', 'float'],
+      ['param5', 'float'], ['param6', 'float'], ['param7', 'float'],
+      ['command', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8'],
+      ['confirmation', 'uint8'],
+    ],
+  },
+  COMMAND_ACK: {
+    id: 77, crcExtra: 143,
+    fields: [['command', 'uint16'], ['result', 'uint8']],
   },
   VFR_HUD: {
     id: 74, crcExtra: 20,

@@ -4,7 +4,9 @@
 // wall clock only decides HOW MANY steps to run — never feeds the physics.
 
 import { stepAircraft, initialState } from './physics.js';
-import { startTelemetry, telemetryFrom } from './telemetry.js';
+import { startTelemetry, telemetryFrom, eulerFromQuat, headingDeg } from './telemetry.js';
+import { MODES, MODE_NAMES, apStep } from './autopilot.js';
+import { startMissionLink } from './missionLink.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -12,9 +14,34 @@ const THROTTLE_RATE = 0.5; // full-range throttle travel per second (dt-integrat
 
 // --- Sim state -------------------------------------------------------------
 let state = initialState();
-let throttle = 0.65;
+let throttle = 0.65; // pilot's throttle setting (MANUAL mode)
 let simTime = 0;
 let manual = false; // once __advance is used, wall-clock stepping stops (test/HILS mode)
+
+// The sim is authoritative for arm/mode; the GCS only requests changes.
+let armed = true; // boots armed + airborne so the standalone sim flies immediately
+let ap = { mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0 };
+let lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
+
+function setMode(m) {
+  const e = eulerFromQuat(state.quat);
+  // Capture "here" as the hold target; real guidance targets arrive in M3.
+  ap = {
+    mode: m, landing: false,
+    targetAlt: Math.max(40, state.pos[1]),
+    targetHeading: headingDeg(e.yaw),
+  };
+}
+
+function applyCommand(cmd) {
+  switch (cmd.type) {
+    case 'arm': armed = cmd.value === 1; break;
+    case 'mode': setMode(cmd.custom >>> 0); break;
+    case 'takeoff': armed = true; setMode(MODES.TAKEOFF); ap.targetAlt = cmd.alt; break;
+    case 'land': ap = { ...ap, landing: true }; break;
+    case 'rtl': setMode(MODES.RTL); break;
+  }
+}
 
 const keys = new Set();
 window.addEventListener('keydown', (e) => {
@@ -38,7 +65,20 @@ function readControls() {
 function stepSim(dt) {
   const dThr = ((keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0)) * THROTTLE_RATE * dt;
   throttle = Math.min(1, Math.max(0, throttle + dThr));
-  state = stepAircraft(state, readControls(), dt);
+
+  let controls;
+  if (ap.mode === MODES.MANUAL && !ap.landing) {
+    controls = readControls();
+  } else {
+    const r = apStep(state, ap);
+    ap = r.ap;
+    controls = r.controls;
+    if (r.disarm) armed = false;
+  }
+  if (!armed) controls = { ...controls, throttle: 0 }; // DISARM cuts the engine
+
+  lastControls = controls;
+  state = stepAircraft(state, controls, dt);
   simTime += dt;
 }
 
@@ -46,6 +86,9 @@ function reset() {
   state = initialState();
   throttle = 0.65;
   simTime = 0;
+  armed = true;
+  ap = { mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0 };
+  lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
   keys.clear();
 }
 
@@ -57,7 +100,8 @@ window.__advance = (seconds, dt = DT) => {
   return window.__state();
 };
 window.__reset = () => reset();
-window.__state = () => JSON.stringify({ simTime, throttle, ...state });
+window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, ...state });
+window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for tests/HILS
 
 // --- Scene -------------------------------------------------------------------
 const scene = new THREE.Scene();
@@ -116,11 +160,13 @@ function render() {
   camera.lookAt(aircraft.position);
 
   const spd = Math.hypot(state.vel[0], state.vel[1], state.vel[2]);
+  const modeLabel = (MODE_NAMES[ap.mode] ?? ap.mode) + (ap.landing ? '·LAND' : '');
   hud.textContent =
     `SPD ${spd.toFixed(1).padStart(5)} m/s` +
     `\nALT ${state.pos[1].toFixed(1).padStart(5)} m` +
-    `\nTHR ${(throttle * 100).toFixed(0).padStart(4)} %` +
-    `\nT+  ${simTime.toFixed(2).padStart(6)} s${manual ? '  [manual]' : ''}`;
+    `\nTHR ${(lastControls.throttle * 100).toFixed(0).padStart(4)} %` +
+    `\nT+  ${simTime.toFixed(2).padStart(6)} s${manual ? '  [manual]' : ''}` +
+    `\n${armed ? 'ARMED' : 'DISARMED'} · ${modeLabel}`;
 
   renderer.render(scene, camera);
 }
@@ -142,9 +188,15 @@ function frame(tMs) {
 }
 requestAnimationFrame(frame);
 
-// Feed the GCS bridge if (and only if) this page is served by it.
-startTelemetry(() => telemetryFrom(state, throttle, simTime)).then((on) => {
-  if (on) console.log('telemetry → bridge: on');
+// Feed the GCS bridge if (and only if) this page is served by it; commands ride
+// back on the same probe result.
+startTelemetry(() =>
+  telemetryFrom(state, lastControls.throttle, simTime, { armed, customMode: ap.mode })
+).then((on) => {
+  if (on) {
+    startMissionLink(applyCommand);
+    console.log('telemetry → bridge: on, command link: on');
+  }
 });
 
 window.__ready = true;

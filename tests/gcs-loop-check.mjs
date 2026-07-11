@@ -4,7 +4,7 @@
 import { spawn } from 'node:child_process';
 import dgram from 'node:dgram';
 import { fileURLToPath } from 'node:url';
-import { decode } from '../bridge/mavlink.mjs';
+import { decode, encode } from '../bridge/mavlink.mjs';
 
 const BRIDGE = fileURLToPath(new URL('../bridge/server.mjs', import.meta.url));
 
@@ -12,7 +12,9 @@ const BRIDGE = fileURLToPath(new URL('../bridge/server.mjs', import.meta.url));
 const gcs = dgram.createSocket('udp4');
 await new Promise((r) => gcs.bind(0, '127.0.0.1', r));
 const received = new Map(); // name → latest decoded message
-gcs.on('message', (buf) => {
+let bridgeAddr = null; // learned from the bridge's own packets, like a real GCS
+gcs.on('message', (buf, rinfo) => {
+  bridgeAddr = rinfo;
   const msg = decode(buf);
   if (msg) received.set(msg.name, msg);
 });
@@ -82,7 +84,76 @@ try {
   check(gps?.fields.fix_type === 3, 'GPS_RAW_INT reports 3D fix');
   check(gps?.fields.time_usec === 42000000n, 'GPS_RAW_INT.time_usec in µs');
 
-  // 3) The bridge serves the sim page itself (single command runs everything).
+  // 3) M2 command loop: GCS command → COMMAND_ACK back + SSE event to the sim.
+  const sse = await fetch(`http://127.0.0.1:${httpPort}/commands`);
+  check(sse.headers.get('content-type') === 'text/event-stream', 'GET /commands is an SSE stream');
+  const reader = sse.body.getReader();
+  const sseEvents = [];
+  (async () => {
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        const data = chunk.split('\n').find((l) => l.startsWith('data: '));
+        if (data) sseEvents.push(JSON.parse(data.slice(6)));
+      }
+    }
+  })().catch(() => {});
+  const sseWait = async (pred, timeoutMs = 3000) => {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const hit = sseEvents.find(pred);
+      if (hit) return hit;
+      if (Date.now() > deadline) return null;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
+  const sendToBridge = (name, fields) =>
+    new Promise((r) => gcs.send(encode(name, fields), bridgeAddr.port, bridgeAddr.address, r));
+
+  received.delete('COMMAND_ACK');
+  await sendToBridge('COMMAND_LONG', {
+    param1: 0, param2: 0, param3: 0, param4: 0, param5: 0, param6: 0, param7: 0,
+    command: 400, target_system: 1, target_component: 1, confirmation: 0,
+  });
+  const ack = await waitFor('COMMAND_ACK');
+  check(ack?.crcOk && ack.fields.command === 400 && ack.fields.result === 0, 'DISARM → COMMAND_ACK(400, ACCEPTED)');
+  const armEvt = await sseWait((e) => e.type === 'arm');
+  check(armEvt?.value === 0, 'DISARM relayed to the sim over SSE');
+
+  await sendToBridge('SET_MODE', { custom_mode: 15, target_system: 1, base_mode: 1 });
+  const modeEvt = await sseWait((e) => e.type === 'mode');
+  check(modeEvt?.custom === 15, 'SET_MODE(GUIDED) relayed to the sim over SSE');
+
+  received.delete('COMMAND_ACK');
+  await sendToBridge('COMMAND_LONG', {
+    param1: 0, param2: 0, param3: 0, param4: 0, param5: 0, param6: 0, param7: 0,
+    command: 4242, target_system: 1, target_component: 1, confirmation: 0,
+  });
+  const nak = await waitFor('COMMAND_ACK');
+  check(nak?.fields.result === 3, 'unknown command → COMMAND_ACK(UNSUPPORTED)');
+
+  // Reconnect: the bridge must replay the last command (monotonic seq dedupe).
+  const sse2 = await fetch(`http://127.0.0.1:${httpPort}/commands`);
+  const r2 = sse2.body.getReader();
+  let replay = '';
+  const rDeadline = Date.now() + 2000;
+  while (!replay.includes('"type"') && Date.now() < rDeadline) {
+    const { value, done } = await r2.read();
+    if (done) break;
+    replay += new TextDecoder().decode(value);
+  }
+  check(replay.includes('"type":"mode"'), 'last command replayed on SSE (re)connect');
+  r2.cancel().catch(() => {});
+  reader.cancel().catch(() => {});
+
+  // 4) The bridge serves the sim page itself (single command runs everything).
   const page = await fetch(`http://127.0.0.1:${httpPort}/`, { method: 'HEAD' });
   check(page.headers.get('x-flight-bridge') === '1', 'bridge serves the sim (x-flight-bridge header)');
 } catch (err) {

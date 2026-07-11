@@ -53,3 +53,20 @@
 - **M2 — Command loop**: decode COMMAND_LONG/SET_MODE, ARM/DISARM + mode via SSE /commands → sim authoritative, COMMAND_ACK + base_mode reflect it.
 **Notes**:
 - QGroundControl is not installed on this machine — the node-level gcs-loop-check is the gate; install QGC and run `npm run bridge` to see the aircraft move on the map (auto-connects on UDP 14550).
+
+## 2026-07-11 — M2: command loop
+
+**Status**: GREEN
+**Files changed**: bridge/mavlink.mjs, bridge/server.mjs, src/autopilot.js, src/missionLink.js, src/physics.js, src/telemetry.js, src/main.js, tests/autopilot.test.mjs, tests/mavlink.test.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 30/30 pass · console 0 ✓ · gcs-loop-check PASS (23/23, incl. ACK/SSE/replay) · determinism ✓ (browser + full-RTL-flight bit-identical test)
+**Decisions**:
+- Physics upgraded: lift is now AoA-dependent (CL0 + CLA·α, soft-stall clamp) — the M0 speed-only lift made pitch useless for climb control, so no autopilot could converge. Closed-loop-tested before committing.
+- Turns are flown coordinated (yaw rate = g·tanφ/V) because the physics has no weathervane moment yet; the nose tracks the velocity vector.
+- Mode numbers are ArduPlane's (MANUAL 0, AUTO 10, RTL 11, LOITER 12, TAKEOFF 13, GUIDED 15) since the heartbeat claims autopilot=3 — QGC shows proper mode names.
+- ACK policy: bridge ACKs supported commands immediately (ACCEPTED) and forwards over SSE; the sim stays authoritative — arm/mode flow back via telemetry into HEARTBEAT (base_mode ARMED bit, system_status ACTIVE/STANDBY).
+- NAV_LAND is a landing sub-state on top of any mode (ArduPlane has no plain LAND mode); touchdown + slow → auto-disarm.
+- `window.__command(cmd)` added: tests/HILS drive the exact path GCS commands take.
+**Next**:
+- **M3 — GUIDED + missions**: mission upload handshake (MISSION_COUNT → REQUEST_INT → ITEM_INT → ACK), waypoint sequencing, DO_REPOSITION go-to, MISSION_CURRENT / MISSION_ITEM_REACHED.
+**Notes**:
+- QGC ARM/DISARM now cuts/restores the engine; TAKEOFF/LAND/RTL fly real (simple) profiles. Verified end-to-end at packet level; visual QGC pass still pending (QGC not installed here).

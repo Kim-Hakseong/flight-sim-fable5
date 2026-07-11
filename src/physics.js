@@ -5,7 +5,9 @@
 export const G = 9.81; // m/s²
 export const MASS = 1000; // kg — small GA-class aircraft
 export const MAX_THRUST = 6000; // N — full-throttle level top speed ≈ √(6000/1.9) ≈ 56 m/s
-export const LIFT_COEF = 6.2; // N/(m/s)² of forward speed — lift = weight near 40 m/s
+export const LIFT_CL0 = 5.0; // N/(m/s)² at zero AoA
+export const LIFT_CLA = 25.0; // N/(m/s)² per rad of AoA — trim AoA ≈ 2.6° at 40 m/s
+export const ALPHA_MAX = 0.35; // rad — soft stall: lift stops growing past ~20° AoA
 export const DRAG_COEF = 1.9; // N/(m/s)² of total speed
 export const LIFT_CAP = 1.8 * MASS * G; // N — saturate lift so dives can't produce silly g
 export const MAX_RATE = { pitch: 1.0, roll: 1.8, yaw: 0.5 }; // rad/s at full stick
@@ -19,6 +21,10 @@ export function quatMultiply(a, b) {
     aw * bz + ax * by - ay * bx + az * bw,
     aw * bw - ax * bx - ay * by - az * bz,
   ];
+}
+
+export function quatConjugate(q) {
+  return [-q[0], -q[1], -q[2], q[3]];
 }
 
 export function quatNormalize(q) {
@@ -62,8 +68,16 @@ export function stepRates(omega, controls, dt) {
   ];
 }
 
-// World-frame net force: thrust along the nose, lift along body-up (forward-speed
-// squared, capped), quadratic drag opposing velocity, gravity.
+// Angle of attack (rad): + when the nose points above the velocity vector.
+export function angleOfAttack(quat, vel) {
+  const vb = quatRotate(quatConjugate(quat), vel); // velocity in body frame
+  const vFwd = -vb[2]; // along the nose
+  if (vFwd < 1) return 0; // too slow for aero angles to mean anything
+  return Math.atan2(-vb[1], vFwd);
+}
+
+// World-frame net force: thrust along the nose, AoA-dependent lift along body-up
+// (capped), quadratic drag opposing velocity, gravity.
 export function aeroForces(quat, vel, throttle) {
   const fwd = quatRotate(quat, [0, 0, -1]);
   const up = quatRotate(quat, [0, 1, 0]);
@@ -71,7 +85,9 @@ export function aeroForces(quat, vel, throttle) {
   const speed = Math.hypot(vx, vy, vz);
   const vFwd = Math.max(0, vx * fwd[0] + vy * fwd[1] + vz * fwd[2]);
   const thrust = throttle * MAX_THRUST;
-  const lift = Math.min(LIFT_COEF * vFwd * vFwd, LIFT_CAP);
+  const alpha = Math.max(-ALPHA_MAX, Math.min(ALPHA_MAX, angleOfAttack(quat, vel)));
+  const cl = Math.max(0, LIFT_CL0 + LIFT_CLA * alpha);
+  const lift = Math.min(cl * vFwd * vFwd, LIFT_CAP);
   const d = DRAG_COEF * speed; // −d·v ⇒ |drag| = DRAG_COEF·speed²
   return [
     thrust * fwd[0] + lift * up[0] - d * vx,

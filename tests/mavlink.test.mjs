@@ -15,6 +15,9 @@ test('payload lengths match the MAVLink v1 spec', () => {
   assert.equal(payloadLength(MESSAGES.GLOBAL_POSITION_INT), 28);
   assert.equal(payloadLength(MESSAGES.VFR_HUD), 20);
   assert.equal(payloadLength(MESSAGES.GPS_RAW_INT), 30);
+  assert.equal(payloadLength(MESSAGES.COMMAND_LONG), 33);
+  assert.equal(payloadLength(MESSAGES.COMMAND_ACK), 3);
+  assert.equal(payloadLength(MESSAGES.SET_MODE), 6);
 });
 
 test('heartbeat frame: header layout and wire-order payload', () => {
@@ -36,6 +39,9 @@ test('round-trip: every M1 message encodes → decodes with crcOk', () => {
     GLOBAL_POSITION_INT: { time_boot_ms: 123456, lat: 374449000, lon: 1264656000, alt: 127000, relative_alt: 120000, vx: 4000, vy: 12, vz: -110, hdg: 35999 },
     VFR_HUD: { airspeed: 41.5, groundspeed: 40.2, alt: 127, climb: 1.1, heading: 359, throttle: 65 },
     GPS_RAW_INT: { time_usec: 123456789n, lat: 374449000, lon: 1264656000, alt: 127000, eph: 80, epv: 120, vel: 4020, cog: 35900, fix_type: 3, satellites_visible: 12 },
+    COMMAND_LONG: { param1: 1, param2: 0, param3: 0, param4: 0, param5: 0, param6: 0, param7: 50, command: 400, target_system: 1, target_component: 1, confirmation: 0 },
+    COMMAND_ACK: { command: 400, result: 0 },
+    SET_MODE: { custom_mode: 15, target_system: 1, base_mode: 1 },
   };
   for (const [name, fields] of Object.entries(samples)) {
     const msg = decode(encode(name, fields, { seq: 42 }));

@@ -44,7 +44,7 @@ export function headingDeg(yawRad) {
 }
 
 // Full snapshot the bridge needs, from a sim state + throttle + sim time.
-export function telemetryFrom(state, throttle, simTime) {
+export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true, customMode: 0 }) {
   const geo = localToGeodetic(state.pos);
   const e = eulerFromQuat(state.quat);
   const rates = bodyRatesToFrd(state.omega);
@@ -58,6 +58,7 @@ export function telemetryFrom(state, throttle, simTime) {
     headingDeg: headingDeg(e.yaw),
     airspeed: speed, groundspeed: Math.hypot(vx, vz), climb: vy,
     throttlePct: Math.round(throttle * 100),
+    armed: vehicle.armed, customMode: vehicle.customMode,
   };
 }
 
