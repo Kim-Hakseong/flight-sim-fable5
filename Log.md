@@ -250,3 +250,19 @@
 - M9–M11 done. Candidates: attitude estimator (gyro+accel+mag complementary/EKF), QGC visual pass, ground-roll takeoff from the runway.
 **Notes**:
 - The fault story is now end-to-end: inject GPS dropout → estimator coasts (EKF variance climbs in QGC + console chart) → the aircraft itself drifts → recovery re-converges. That's the HILS purpose of this whole build.
+
+## 2026-07-13 — M12: attitude estimator (Mahony + gyro bias)
+
+**Status**: GREEN
+**Files changed**: PRD.md, src/estimator.js (attitude filter), src/sensors.js (true specific-force accel), src/main.js, src/telemetry.js, src/engineering.js, tests/attitude.test.mjs (new), tests/nav-loop.test.mjs
+**Tests**: unit 70/70 · console 0 ✓ · gcs PASS · determinism ✓ (full estimated-state loop bit-identical)
+**Decisions**:
+- Accelerometer model upgraded from a gravity placeholder to TRUE specific force ((F_aero+prop)/m in body axes) — the turn-contamination failure mode is now physically real.
+- Mahony filter: gyro integration + accel tilt correction + mag heading correction; the correction integral IS the gyro-bias estimate (converges to an injected 0.05 rad/s bias within ±0.015, unit-tested).
+- Naive accel trust in turns fed back through the estimated-attitude control loop and spiralled (62° peak error, measured) → centripetal compensation ω×v with pitot speed, plus a ‖f‖≈g norm band (tight 8% band when gyro is out and compensation is impossible). Turn error now peaks < 8°, re-converges < 3°.
+- Control path is now 100% estimated: nav pos/vel (M11), Mahony attitude, bias-corrected rates (SAS included), pitot Va. Truth remains ONLY in the WoW discrete. ATTITUDE downlink reports the estimated attitude — QGC shows what the vehicle believes, like a real one.
+- Console NAV section: attitude error (deg) + live gyro-bias estimate.
+**Next**:
+- Candidates: ground-roll takeoff from the runway, QGC visual pass, EKF_STATUS attitude flag from lpErr.
+**Notes**:
+- Fault demos now cover all 6 sensors end-to-end: gyro bias → transient wobble then absorbed; mag bias 30° → the aircraft actually flies 30° off heading; gyro dropout → SAS goes blind + attitude coasts on accel/mag.

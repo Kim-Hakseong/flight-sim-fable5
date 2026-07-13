@@ -58,8 +58,9 @@ export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true,
   const navPos = vehicle.est?.pos ?? state.pos;
   const navVel = vehicle.est?.vel ?? state.vel;
   const geo = localToGeodetic(navPos);
-  const e = eulerFromQuat(state.quat);
-  const rates = bodyRatesToFrd(state.omega);
+  // ATTITUDE downlinks what the vehicle BELIEVES (estimated quat + corrected rates).
+  const e = eulerFromQuat(vehicle.attQuat ?? state.quat);
+  const rates = bodyRatesToFrd(vehicle.omega ?? state.omega);
   const [vx, vy, vz] = navVel;
   const speed = Math.hypot(...state.vel); // air data stays true airspeed
   return {

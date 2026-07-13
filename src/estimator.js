@@ -24,6 +24,73 @@ export const VEL_BASE_H_S = 2; // s between horizontal velocity refreshes
 export const VEL_BASE_V_S = 1; // s, vertical
 export const REJECT_RESET_S = 8; // FDE backstop: re-anchor after this long rejecting
 
+// --- Attitude: Mahony complementary filter + gyro-bias estimation ---------------
+// Gyro integration, corrected toward the accelerometer's gravity direction (only
+// when ‖f‖ ≈ g — turns/dynamics are gated out) and the magnetometer's heading.
+// The integral of the correction IS the gyro-bias estimate.
+import { G, quatIntegrate, quatRotate, quatConjugate } from './physics.js';
+
+// Raw specific force in a turn points along BODY-up (1.15 g at 30° bank) — trusted
+// naively it drags the estimate toward "wings level" while banked, and flown
+// closed-loop that feedback spirals. Fix like real FCs: subtract the centripetal
+// term ω × v (pitot speed along the nose) so the residual is gravity again; a
+// norm band gates whatever the compensation misses.
+export const ATT = { KP: 1.0, KI: 0.05, KMAG: 0.3, ACC_BAND: 0.15 };
+
+export function createAttEstimator(state) {
+  return { quat: [...state.quat], bias: [0, 0, 0], lpErr: 0 };
+}
+
+export function stepAttEstimator(att, readings, dt) {
+  const q = att.quat;
+  const e = [0, 0, 0]; // body-frame correction rate (pre-gain)
+
+  const gyroRaw = readings?.gyro;
+  const acc = readings?.accel; // specific force, our body axes
+  if (acc) {
+    // Centripetal compensation: a_c = ω × v, with v ≈ pitot airspeed along the nose.
+    let fg = acc;
+    if (gyroRaw) {
+      const w = gyroRaw.map((v, i) => v - att.bias[i]);
+      const vb = [0, 0, -(readings?.pitot?.[0] ?? 30)];
+      fg = [
+        acc[0] - (w[1] * vb[2] - w[2] * vb[1]),
+        acc[1] - (w[2] * vb[0] - w[0] * vb[2]),
+        acc[2] - (w[0] * vb[1] - w[1] * vb[0]),
+      ];
+    }
+    const n = Math.hypot(...fg);
+    if (n > 1 && Math.abs(n - G) / G < (gyroRaw ? ATT.ACC_BAND : 0.08)) {
+      const um = [fg[0] / n, fg[1] / n, fg[2] / n]; // measured body-up
+      const ue = quatRotate(quatConjugate(q), [0, 1, 0]); // estimated body-up
+      e[0] += um[1] * ue[2] - um[2] * ue[1];
+      e[1] += um[2] * ue[0] - um[0] * ue[2];
+      e[2] += um[0] * ue[1] - um[1] * ue[0];
+    }
+  }
+
+  let eMagScale = 0;
+  const mag = readings?.mag; // [heading deg]
+  if (mag) {
+    const fwd = quatRotate(q, [0, 0, -1]);
+    let dpsi = (mag[0] * Math.PI) / 180 - Math.atan2(fwd[0], -fwd[2]);
+    dpsi = ((dpsi + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    eMagScale = -dpsi; // heading + is yaw-right = −Y body rate (our frame)
+  }
+  const upB = quatRotate(quatConjugate(q), [0, 1, 0]);
+
+  const bias = att.bias.map((b, i) => b - ATT.KI * (e[i] + upB[i] * eMagScale) * dt);
+  const gyro = readings?.gyro; // null on dropout: coast on corrections alone
+  const omega = [0, 1, 2].map((i) =>
+    (gyro ? gyro[i] - bias[i] : 0) + ATT.KP * e[i] + ATT.KMAG * upB[i] * eMagScale
+  );
+  return {
+    quat: quatIntegrate(q, omega, dt),
+    bias,
+    lpErr: 0.99 * att.lpErr + 0.01 * Math.hypot(...e),
+  };
+}
+
 export function createEstimator(state) {
   return {
     pos: [...state.pos], vel: [...state.vel],

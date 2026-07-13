@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 import { stepAircraft, initialState } from '../src/physics.js';
 import { MODES, apStep } from '../src/autopilot.js';
 import { createSensors, stepSensors, injectFault, clearFault } from '../src/sensors.js';
-import { createEstimator, stepEstimator } from '../src/estimator.js';
+import {
+  createEstimator, stepEstimator, createAttEstimator, stepAttEstimator,
+} from '../src/estimator.js';
 import { createWind, stepWind } from '../src/wind.js';
 import { toLocalTargets } from '../src/missions.js';
 import { HOME } from '../src/telemetry.js';
@@ -21,14 +23,22 @@ function createLoop({ seed = 21, params = {} } = {}) {
     state: initialState(),
     sensors: createSensors(seed),
     est: createEstimator(initialState()),
+    att: createAttEstimator(initialState()),
     wind: createWind(seed + 1),
     readings: null,
   };
 }
 
-// One full closed-loop step, mirroring src/main.js stepSim exactly.
+// One full closed-loop step, mirroring src/main.js stepSim exactly: the control
+// path sees ONLY estimated state (nav, attitude, corrected rates, pitot) + WoW.
 function stepLoop(L, ap) {
-  const nav = { ...L.state, pos: L.est.pos, vel: L.est.vel, wow: L.state.pos[1] <= 0.5 };
+  const rateEst = L.readings?.gyro
+    ? L.readings.gyro.map((v, i) => v - L.att.bias[i])
+    : L.readings ? [0, 0, 0] : L.state.omega;
+  const nav = {
+    ...L.state, pos: L.est.pos, vel: L.est.vel, quat: L.att.quat, omega: rateEst,
+    wow: L.state.pos[1] <= 0.5,
+  };
   const r = apStep(nav, ap, L.P, L.readings?.pitot?.[0] ?? null);
   const w = stepWind(L.wind, L.state, L.P, DT);
   L.wind = w.wind;
@@ -36,6 +46,7 @@ function stepLoop(L, ap) {
   const sw = stepSensors(L.sensors, L.state, L.P, w.windWorld);
   L.sensors = sw.sensors;
   L.readings = sw.readings;
+  L.att = stepAttEstimator(L.att, L.readings, DT);
   L.est = stepEstimator(L.est, L.readings, DT);
   return r;
 }
@@ -108,7 +119,7 @@ test('determinism: the full closed loop is bit-identical across reruns', () => {
       const r = stepLoop(L, ap);
       ap = r.ap;
     }
-    return JSON.stringify({ s: L.state, est: L.est, ap });
+    return JSON.stringify({ s: L.state, est: L.est, att: L.att, ap });
   };
   assert.equal(fly(), fly());
 });

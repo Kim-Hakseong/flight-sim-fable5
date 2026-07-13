@@ -138,8 +138,11 @@ export function createEngineering({ getData, injectFault, clearFault }) {
         `\nδa ${(a.da * DEG).toFixed(1)}°  δe ${(a.de * DEG).toFixed(1)}°  δr ${(a.dr * DEG).toFixed(1)}°  δt ${(a.dt * 100).toFixed(0)}%` +
         `\nVa ${d.va.toFixed(1)} m/s  α ${(d.alpha * DEG).toFixed(1)}°  β ${(d.beta * DEG).toFixed(1)}°`;
       const errH = Math.hypot(d.est.pos[0] - d.state.pos[0], d.est.pos[2] - d.state.pos[2]);
+      const qd = Math.abs(d.att.quat.reduce((s2, v, i) => s2 + v * d.state.quat[i], 0));
+      const attErr = 2 * Math.acos(Math.min(1, qd)) * DEG;
       sections.nav.textContent =
         `est err  H ${errH.toFixed(2)} m   V ${(d.est.pos[1] - d.state.pos[1]).toFixed(2)} m` +
+        `\natt err  ${attErr.toFixed(2)}°   gyro bias ${fmtVec(d.att.bias.map((b) => b * DEG), 3)} °/s` +
         `\nvarH ${d.est.varH.toFixed(2)}  varV ${d.est.varV.toFixed(2)}  gpsAge ${d.est.gpsAge.toFixed(1)} s` +
         `\nekf flags 0b${(d.ekf.flags >>> 0).toString(2).padStart(10, '0')}`;
       sections.sensors.textContent = SENSORS

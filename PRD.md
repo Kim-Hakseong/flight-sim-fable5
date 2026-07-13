@@ -106,6 +106,16 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   sensor fault → estimator reacts → the AIRCRAFT visibly feels it.
   *Verify:* mission completes on estimated nav, incl. across a 10 s GPS dropout.
 
+- **M12 — Attitude estimator.** Mahony-style complementary filter + gyro-bias
+  estimation over the (faultable) gyro/accel/mag: gyro integration corrected by
+  accelerometer tilt (gated by ‖f‖≈g so turns don't corrupt it) and magnetometer
+  heading. The accelerometer sensor model is upgraded to TRUE specific force
+  (aero+prop reaction, body frame) so turn contamination is real. The autopilot,
+  SAS damping, and the ATTITUDE downlink all consume the ESTIMATED attitude and
+  bias-corrected rates — no truth left in the control path except WoW.
+  *Verify:* converges from a large initial error; absorbs an injected gyro bias;
+  bounded error through turns; full mission completes on 100% estimated state.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

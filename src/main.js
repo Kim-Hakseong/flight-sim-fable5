@@ -11,7 +11,9 @@ import { toLocalTargets } from './missions.js';
 import { geodeticToLocal } from './telemetry.js';
 import { defaultParams, clampParam } from './params.js';
 import { createSensors, stepSensors, injectFault, clearFault } from './sensors.js';
-import { createEstimator, stepEstimator, ekfReport } from './estimator.js';
+import {
+  createEstimator, stepEstimator, ekfReport, createAttEstimator, stepAttEstimator,
+} from './estimator.js';
 import { createBattery, stepBattery, batteryOutputs } from './battery.js';
 import { airData } from './physics.js';
 import { createWorld } from './scene.js';
@@ -42,6 +44,7 @@ let sensors = createSensors(SENSOR_SEED);
 let readings = null; // latest sensor sweep (feeds telemetry)
 let lastGps = null; // held through dropouts, like a real receiver's last fix
 let est = createEstimator(state);
+let att = createAttEstimator(state);
 let battery = createBattery();
 const WIND_SEED = 2;
 let wind = createWind(WIND_SEED);
@@ -107,16 +110,21 @@ function stepSim(dt) {
   const dThr = ((keys.has('KeyW') ? 1 : 0) - (keys.has('KeyS') ? 1 : 0)) * THROTTLE_RATE * dt;
   throttle = Math.min(1, Math.max(0, throttle + dThr));
 
+  // HILS closure: everything in the control path is ESTIMATED — nav position/
+  // velocity, Mahony attitude, bias-corrected rates, pitot airspeed. The only
+  // truth left is the weight-on-wheels discrete (a real switch on real gear).
+  const rateEst = readings?.gyro
+    ? readings.gyro.map((v, i) => v - att.bias[i])
+    : readings ? [0, 0, 0] : state.omega; // gyro dropout: rate damping goes blind
+  const nav = {
+    ...state, pos: est.pos, vel: est.vel, quat: att.quat, omega: rateEst,
+    wow: state.pos[1] <= 0.5,
+  };
+
   let controls;
   if (ap.mode === MODES.MANUAL && !ap.landing) {
-    controls = manualControls(state, readControls()); // stick → surfaces, with SAS
+    controls = manualControls(nav, readControls()); // stick → surfaces, SAS on est rates
   } else {
-    // HILS closure: guidance flies the ESTIMATOR's nav + the pitot's airspeed.
-    // Attitude/rates stay truth (no attitude estimator yet); WoW is the real switch.
-    const nav = {
-      ...state, pos: est.pos, vel: est.vel,
-      wow: state.pos[1] <= 0.5,
-    };
     const r = apStep(nav, ap, params, readings?.pitot?.[0] ?? null);
     ap = r.ap;
     controls = r.controls;
@@ -134,6 +142,7 @@ function stepSim(dt) {
   sensors = sw.sensors;
   readings = sw.readings;
   if (readings.gps) lastGps = readings.gps;
+  att = stepAttEstimator(att, readings, dt);
   est = stepEstimator(est, readings, dt);
   battery = stepBattery(battery, state.act.dt, dt); // actual actuator throttle
   simTime += dt;
@@ -155,6 +164,7 @@ function reset() {
   readings = null;
   lastGps = null;
   est = createEstimator(state);
+  att = createAttEstimator(state);
   battery = createBattery();
   wind = createWind(WIND_SEED);
   windWorld = [0, 0, 0];
@@ -169,7 +179,7 @@ window.__advance = (seconds, dt = DT) => {
   return window.__state();
 };
 window.__reset = () => reset();
-window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, est, battery, wind, ...state });
+window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, est, att, battery, wind, ...state });
 window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for tests/HILS
 window.injectFault = (sensor, type, opts) => { sensors = injectFault(sensors, sensor, type, opts); };
 window.clearFault = (sensor) => { sensors = clearFault(sensors, sensor); };
@@ -195,7 +205,7 @@ const eng = createEngineering({
   getData: () => {
     const ad = airData(state.quat, state.vel, windWorld);
     return {
-      state, est, windWorld, va: ad.Va, alpha: ad.alpha, beta: ad.beta,
+      state, est, att, windWorld, va: ad.Va, alpha: ad.alpha, beta: ad.beta,
       faults: readings?.faults ?? {}, ekf: ekfReport(est, readings),
       batt: batteryOutputs(battery, state.act.dt),
     };
@@ -250,6 +260,8 @@ startTelemetry(() =>
     baroAlt: readings?.baro?.[0], health: readings?.health, faults: readings?.faults,
     est, ekf: ekfReport(est, readings),
     va: airData(state.quat, state.vel, windWorld).Va,
+    attQuat: att.quat,
+    omega: readings?.gyro ? readings.gyro.map((v, i) => v - att.bias[i]) : state.omega,
     ...batteryOutputs(battery, state.act.dt),
   })
 ).then((on) => {

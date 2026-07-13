@@ -5,7 +5,20 @@
 
 import { gaussianNext } from './prng.js';
 import { eulerFromQuat, headingDeg } from './telemetry.js';
-import { airData } from './physics.js';
+import { airData, forcesMoments, quatRotate, quatConjugate, toFRD, fromFRD, AC, G } from './physics.js';
+
+// What an accelerometer actually measures: specific force = (F_total − gravity)/m
+// in the body frame — i.e. the aero+prop reaction. Level flight reads ≈ +g up;
+// a coordinated turn reads "up" along BODY-up (the classic tilt-sensing trap).
+export function specificForce(state, wind = [0, 0, 0]) {
+  const { F } = forcesMoments(state.quat, state.vel, state.omega, state.act, state.pos[1], wind);
+  const gB = toFRD(quatRotate(quatConjugate(state.quat), [0, -AC.mass * G, 0]));
+  return fromFRD([
+    (F[0] - gB[0]) / AC.mass,
+    (F[1] - gB[1]) / AC.mass,
+    (F[2] - gB[2]) / AC.mass,
+  ]);
+}
 
 export const SENSORS = ['gyro', 'accel', 'mag', 'baro', 'pitot', 'gps'];
 // MAV_SYS_STATUS_SENSOR bits QGC colors in its health panel (pitot = diff pressure).
@@ -70,7 +83,7 @@ export function stepSensors(sensors, state, P, wind = [0, 0, 0]) {
     baro: sample('baro', [state.pos[1]], P.SNS_BARO_SGM_M, 30),
     pitot: sample('pitot', [airData(state.quat, state.vel, wind).Va], P.SNS_PIT_SGM_MS, 8),
     gyro: sample('gyro', state.omega, P.SNS_GYRO_SGM_R, 0.2),
-    accel: sample('accel', [0, -9.81, 0], P.SNS_ACC_SGM_MS2, 2), // gravity ref (M6 refines)
+    accel: sample('accel', specificForce(state, wind), P.SNS_ACC_SGM_MS2, 2),
     mag: sample('mag', [headingDeg(e.yaw)], 0.5, 45),
     health: healthBits(sensors.faults),
     faults: Object.fromEntries(Object.entries(sensors.faults).map(([k, v]) => [k, v.type])),
