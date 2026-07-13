@@ -282,3 +282,15 @@
 - Candidates: QGC visual pass (needs local bridge + QGC), EKF_STATUS attitude flag, mission-item takeoff/land at specified runway points.
 **Notes**:
 - Real-vehicle GCS flow now works end to end: QGC ARM → TAKEOFF command → ground roll → rotate → climb → GUIDED/mission → RTL → land → WoW disarm.
+
+## 2026-07-13 — UX: keyboard arm/manual keys
+
+**Status**: GREEN
+**Files changed**: src/main.js, index.html
+**Tests**: unit 75/75 · console 0 ✓ · determinism ✓
+**Decisions**:
+- User feedback: W/S "didn't work" — the M13 disarmed boot cut the engine and the keyboard had no way to ARM. Space now toggles arm/disarm (same applyCommand path as the GCS), KeyM drops back to MANUAL from any AP mode.
+**Next**:
+- (idle)
+**Notes**:
+- Manual takeoff flow: Space(arm) → W hold → at ~20 m/s pull ↑.

@@ -94,7 +94,9 @@ window.addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'KeyR') reset();
   if (e.code === 'KeyT') applyCommand({ type: 'takeoff', alt: 60 });
-  if (e.code.startsWith('Arrow')) e.preventDefault();
+  if (e.code === 'Space') applyCommand({ type: 'arm', value: armed ? 0 : 1 }); // arm/disarm
+  if (e.code === 'KeyM') setMode(MODES.MANUAL); // take the stick back from the AP
+  if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 window.addEventListener('blur', () => keys.clear());
