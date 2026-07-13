@@ -189,3 +189,20 @@
 - **M8 — engineering visuals**: procedural UAV with moving control surfaces + prop, runway + seeded terrain, shadows, HUD (Va/α/β/surfaces), screenshot gate.
 **Notes**:
 - Loiter radius 250 m (turn radius at 30 m/s / 30° bank ≈ 160 m).
+
+## 2026-07-13 — M8: engineering visuals
+
+**Status**: GREEN
+**Files changed**: src/scene.js (new), src/main.js, index.html-, tests/browser-check.mjs, .gitignore
+**Tests**: unit 54/54 · console 0 ✓ · gcs PASS · determinism ✓ · screenshot artifact ✓ (tests/artifacts/sim.png, gitignored)
+**Decisions**:
+- Scene moved to src/scene.js, RENDER-ONLY: visuals are a pure function of sim state (prop spin = f(simTime, δt), not wall clock) — determinism untouched.
+- Procedural true-scale (b=2.9 m) UAV: hinged ailerons/elevator/rudder are separate meshes rotating about their hinge lines, mirroring the ACTUATOR states (×1.6 visual gain) — the HILS bench can literally watch its commands move the surfaces.
+- Runway (900 m, centerline + thresholds) at home aligned north; seeded tree scatter + ground texture from our PRNG (fixed WORLD_SEED) — same world every boot.
+- Sun + PCFSoft shadows with a tight frustum that follows the aircraft; smoothed no-roll chase cam (snaps on teleport/reset).
+- HUD is now an air-data strip: Va/α/β, VS, and live δa/δe/δr in degrees.
+- browser-check captures a screenshot artifact per run (UI gate, CLAUDE.md §0.4).
+**Next**:
+- Candidates: engineering console (charts/state vector), autopilot-on-estimate, visual QGC pass.
+**Notes**:
+- Live after push: https://kim-hakseong.github.io/flight-sim-fable5/

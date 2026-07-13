@@ -13,6 +13,8 @@ import { defaultParams, clampParam } from './params.js';
 import { createSensors, stepSensors, injectFault, clearFault } from './sensors.js';
 import { createEstimator, stepEstimator, ekfReport } from './estimator.js';
 import { createBattery, stepBattery, batteryOutputs } from './battery.js';
+import { airData } from './physics.js';
+import { createWorld } from './scene.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -155,73 +157,37 @@ window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for te
 window.injectFault = (sensor, type, opts) => { sensors = injectFault(sensors, sensor, type, opts); };
 window.clearFault = (sensor) => { sensors = clearFault(sensors, sensor); };
 
-// --- Scene -------------------------------------------------------------------
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87b5e0);
-scene.fog = new THREE.Fog(0x87b5e0, 600, 3500);
-
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 5000);
+// --- Scene (built in src/scene.js; render-only) --------------------------------
+const world = createWorld(THREE);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+  world.camera.aspect = innerWidth / innerHeight;
+  world.camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
-scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a4a2f, 0.9));
-const sun = new THREE.DirectionalLight(0xfff2d8, 0.8);
-sun.position.set(200, 400, 100);
-scene.add(sun);
-
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(8000, 8000),
-  new THREE.MeshLambertMaterial({ color: 0x4a6b3a })
-);
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
-const grid = new THREE.GridHelper(4000, 80, 0x33502a, 0x3d5c31);
-grid.position.y = 0.05;
-scene.add(grid);
-
-// Minimal aircraft: fuselage + wing + tail boxes (orientation must be readable).
-const aircraft = new THREE.Group();
-const mat = new THREE.MeshLambertMaterial({ color: 0xd8dbe0 });
-const wingMat = new THREE.MeshLambertMaterial({ color: 0xc23b3b });
-const fuselage = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 6), mat);
-const wing = new THREE.Mesh(new THREE.BoxGeometry(8, 0.15, 1.3), wingMat);
-wing.position.set(0, 0.2, -0.3);
-const tail = new THREE.Mesh(new THREE.BoxGeometry(3, 0.12, 0.8), wingMat);
-tail.position.set(0, 0.3, 2.6);
-const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.9), mat);
-fin.position.set(0, 0.8, 2.6);
-aircraft.add(fuselage, wing, tail, fin);
-scene.add(aircraft);
-
 const hud = document.getElementById('hud');
+const DEG = 180 / Math.PI;
 
 function render() {
-  aircraft.position.set(state.pos[0], state.pos[1], state.pos[2]);
-  aircraft.quaternion.set(state.quat[0], state.quat[1], state.quat[2], state.quat[3]);
+  world.update(state, simTime);
 
-  // Chase camera: behind and above the aircraft, world-up (no camera roll).
-  const back = new THREE.Vector3(0, 3.5, 14).applyQuaternion(aircraft.quaternion);
-  camera.position.copy(aircraft.position).add(back);
-  camera.lookAt(aircraft.position);
-
-  const spd = Math.hypot(state.vel[0], state.vel[1], state.vel[2]);
+  const ad = airData(state.quat, state.vel);
   const wp = ap.mission ? ` · WP ${Math.min(ap.mission.idx + 1, ap.mission.targets.length)}/${ap.mission.targets.length}` : '';
   const modeLabel = (MODE_NAMES[ap.mode] ?? ap.mode) + (ap.landing ? '·LAND' : '') + wp;
   hud.textContent =
-    `SPD ${spd.toFixed(1).padStart(5)} m/s` +
-    `\nALT ${state.pos[1].toFixed(1).padStart(5)} m` +
-    `\nTHR ${(state.act.dt * 100).toFixed(0).padStart(4)} %` +
-    `\nT+  ${simTime.toFixed(2).padStart(6)} s${manual ? '  [manual]' : ''}` +
+    `VA  ${ad.Va.toFixed(1).padStart(5)} m/s   α ${(ad.alpha * DEG).toFixed(1).padStart(5)}°  β ${(ad.beta * DEG).toFixed(1).padStart(5)}°` +
+    `\nALT ${state.pos[1].toFixed(1).padStart(5)} m     VS ${state.vel[1].toFixed(1).padStart(5)} m/s` +
+    `\nTHR ${(state.act.dt * 100).toFixed(0).padStart(4)} %    AIL ${(state.act.da * DEG).toFixed(0).padStart(4)}°  ELV ${(state.act.de * DEG).toFixed(0).padStart(4)}°  RUD ${(state.act.dr * DEG).toFixed(0).padStart(4)}°` +
+    `\nT+  ${simTime.toFixed(2).padStart(7)} s${manual ? '  [manual]' : ''}` +
     `\n${armed ? 'ARMED' : 'DISARMED'} · ${modeLabel}`;
 
-  renderer.render(scene, camera);
+  renderer.render(world.scene, world.camera);
 }
 
 // --- Fixed-step loop: accumulate wall time, step in exact DT increments ------

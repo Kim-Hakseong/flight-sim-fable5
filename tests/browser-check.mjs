@@ -4,7 +4,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { spawn, execSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,7 +127,17 @@ try {
     return { match: a === b, faultMatch: c === d && c !== a, sample: a.slice(0, 120) };
   })()`);
 
+  // Screenshot artifact (UI gate: CLAUDE.md §0.4). __reset first so the frame is canonical.
+  await evaluate('window.__reset(), window.__advance(3), true');
+  await new Promise((r) => setTimeout(r, 300)); // let a rAF render the new state
+  const shot = await send('Page.captureScreenshot', { format: 'png' });
+  const artDir = join(ROOT, 'tests', 'artifacts');
+  mkdirSync(artDir, { recursive: true });
+  const shotPath = join(artDir, 'sim.png');
+  writeFileSync(shotPath, Buffer.from(shot.data, 'base64'));
+
   console.log(`page:        ${pageUrl}`);
+  console.log(`screenshot:  ${shotPath}`);
   console.log(`console errors: ${consoleErrors.length}`);
   consoleErrors.forEach((e) => console.log(`  ✗ ${e}`));
   console.log(`__advance reproducible: ${det.match}`);
