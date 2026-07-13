@@ -381,3 +381,11 @@
 - RENDER-ONLY by design: the flight model remains the validated small-UAV dynamics (a true F-16 model = future milestone); every gate stays green untouched.
 **Next**:
 - Optional: F-16-class flight model (mass/inertia/jet engine/coefficients) as a selectable airframe.
+
+## 2026-07-13 — M22b: class-correct UAV visual (replaces F-16)
+
+**Status**: GREEN
+**Files changed**: src/scene.js
+**Tests**: unit 89/89 unaffected (render-only) · browser PASS · screenshot ✓
+**Decisions**:
+- User call: match the visual to the PHYSICS class instead of an F-16 shell. New procedural Aerosonde-class UAV at true 2.9 m span: sensor-pod fuselage + chin turret + pitot/GPS fittings, high-AR tapered wing with dihedral + orange tip/surface markings, twin tail booms with twin fins, hinged ailerons/elevator/rudders, pusher prop. Cinematic pass (ACES, sky dome, warm light) retained; camera/gear back to small scale.
