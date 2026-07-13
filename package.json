@@ -12,6 +12,8 @@
     "serve": "python3 -m http.server 8123",
     "check:browser": "node tests/browser-check.mjs",
     "plant": "node bridge/plant.mjs",
-    "check:plant": "node tests/plant-check.mjs"
+    "check:plant": "node tests/plant-check.mjs",
+    "sitl": "node bridge/sitl.mjs",
+    "check:sitl": "node tests/sitl-check.mjs"
   }
 }

@@ -165,6 +165,14 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   out), which is the real meaning of HILS. QGC telemetry keeps flowing.
   *Verify:* an external test controller flies the plant; lockstep is deterministic.
 
+- **M21 — ArduPilot SITL JSON adapter.** Speak ArduPilot's SITL "JSON" backend
+  protocol on UDP 9002: binary servo packets (magic/frame_rate/frame_count/pwm[16])
+  in, one-line JSON state (timestamp/imu/position/attitude/velocity/airspeed,
+  NED + FRD) out, in strict lockstep with frame_count dedupe and reset-on-restart.
+  Physics truth is returned (ArduPilot does its own sensor modelling); wind via env.
+  *Verify:* a fake-ArduPilot driver exercises the protocol end-to-end (lockstep
+  timing, dedupe, restart, control surface signs, ground roll accelerates).
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

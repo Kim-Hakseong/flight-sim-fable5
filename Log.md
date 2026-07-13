@@ -353,3 +353,19 @@
 - Full backlog cleared (A–I). Natural follow-ons: ArduPilot SITL JSON adapter for the plant port, mission-item extensions, QGC visual pass.
 **Notes**:
 - The plant protocol is documented in bridge/plant.mjs header; an ArduPilot JSON-backend adapter would slot in front of it.
+
+## 2026-07-13 — M21: ArduPilot SITL JSON adapter
+
+**Status**: GREEN
+**Files changed**: PRD.md, bridge/sitl.mjs (new), tests/sitl-check.mjs (new), package.json, .github/workflows/ci.yml
+**Tests**: unit 89/89 · gcs PASS · HILS 7/7 · plant PASS · SITL check PASS (9/9) · browser PASS
+**Decisions**:
+- `npm run sitl` speaks ArduPilot's SITL JSON backend on UDP 9002: binary servo packet (magic 18458, frame_rate, frame_count, pwm[16]) in → one-line JSON truth state (timestamp/imu FRD/position NED/attitude/velocity/airspeed) out, strict lockstep. Duplicate frame_count = resend without stepping; frame_count going backwards = ArduPilot restart → physics reset.
+- Truth (not our sensor model) is returned — ArduPilot layers its own sensor sim, per the JSON backend contract. Physics-only stepping (no estimator stack) since AP brings its own.
+- On the ground the accelerometer substitutes the support reaction (−g on FRD z): our ground contact is a kinematic clamp with no modelled normal force, and without this AP's IMU would read free-fall while parked.
+- Servo map (ArduPlane defaults 1-ail/2-elev/3-thr/4-rud); AP elevator+/rudder+ invert onto ours. Signs locked by the fake-AP driver: elevator+ → measured nose-up, aileron+ → measured p>0.
+- Wind via env (WND_N_MS/WND_E_MS/WND_TRB), calm default.
+**Next**:
+- Real-binary smoke test: `sim_vehicle.py -v ArduPlane --model JSON` against `npm run sitl` (needs ArduPilot locally — user machine).
+**Notes**:
+- Usage: terminal 1 `npm run sitl`, terminal 2 ArduPlane `--model JSON`; QGC connects to ArduPilot itself (TCP 5760/UDP 14550), so the GCS shows a REAL autopilot flying our aero model.

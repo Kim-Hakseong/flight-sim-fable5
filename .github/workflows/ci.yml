@@ -21,6 +21,8 @@ jobs:
         run: node tests/hils-run.mjs
       - name: Sim-as-plant lockstep check (external FC over UDP)
         run: node tests/plant-check.mjs
+      - name: ArduPilot SITL JSON adapter check
+        run: node tests/sitl-check.mjs
       - name: Browser gate (headless Chrome, console-0 + determinism + DOM)
         env:
           CHROME_BIN: /usr/bin/google-chrome
