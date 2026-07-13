@@ -16,6 +16,7 @@ import { createBattery, stepBattery, batteryOutputs } from './battery.js';
 import { airData } from './physics.js';
 import { createWorld } from './scene.js';
 import { createWind, stepWind } from './wind.js';
+import { createEngineering } from './engineering.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -130,6 +131,7 @@ function stepSim(dt) {
   est = stepEstimator(est, readings, dt);
   battery = stepBattery(battery, state.act.dt, dt); // actual actuator throttle
   simTime += dt;
+  if (Math.round(simTime / dt) % 6 === 0) eng.record(); // 10 Hz chart samples
 }
 
 function reset() {
@@ -183,6 +185,20 @@ addEventListener('resize', () => {
 const hud = document.getElementById('hud');
 const DEG = 180 / Math.PI;
 
+const eng = createEngineering({
+  getData: () => {
+    const ad = airData(state.quat, state.vel, windWorld);
+    return {
+      state, est, windWorld, va: ad.Va, alpha: ad.alpha, beta: ad.beta,
+      faults: readings?.faults ?? {}, ekf: ekfReport(est, readings),
+      batt: batteryOutputs(battery, state.act.dt),
+    };
+  },
+  injectFault: (s, t) => window.injectFault(s, t),
+  clearFault: (s) => window.clearFault(s),
+});
+window.__eng = eng; // DOM-gate hook for the browser check
+
 function render() {
   world.update(state, simTime);
 
@@ -196,6 +212,7 @@ function render() {
     `\nT+  ${simTime.toFixed(2).padStart(7)} s${manual ? '  [manual]' : ''}` +
     `\n${armed ? 'ARMED' : 'DISARMED'} · ${modeLabel}`;
 
+  eng.render();
   renderer.render(world.scene, world.camera);
 }
 

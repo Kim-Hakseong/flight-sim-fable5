@@ -221,3 +221,17 @@
 - **M10 — engineering console** (src/engineering.js).
 **Notes**:
 - Turbulence is on by default (light) — the live page now visibly "breathes".
+
+## 2026-07-13 — M10: engineering console (HILS bench)
+
+**Status**: GREEN
+**Files changed**: src/engineering.js (new), src/main.js, index.html, tests/browser-check.mjs
+**Tests**: unit 60/60 · console 0 ✓ · gcs PASS · determinism ✓ · DOM gate ✓ (3 charts, 20 bench buttons) · screenshot ✓
+**Decisions**:
+- KeyE toggles the panel: live state vector (pos/vel/pqr/surfaces/α/β/Va), estimator-vs-truth errors + variances + EKF flag bits, per-sensor fault bench (freeze/drop/bias/clear buttons driving the SAME window.injectFault surface as tests), wind + battery, and 30 s strip charts (alt truth-vs-estimate overlay, Va, est error).
+- Chart samples are recorded on SIM steps at 10 Hz (deterministic data); drawing happens at render rate. Panel is render-only — physics untouched, `__advance` reproducibility unchanged.
+- browser-check gained the DOM gate (panel exists/toggles/has charts+bench) and the screenshot artifact now ships with the console open.
+**Next**:
+- **M11 — autopilot flies the estimate** (+ pitot sensor).
+**Notes**:
+- Fault demo is now one click: E → gps [drop] → watch est errH chart climb while QGC's GPS goes red.

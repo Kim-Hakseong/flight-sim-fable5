@@ -127,7 +127,19 @@ try {
     return { match: a === b, faultMatch: c === d && c !== a, sample: a.slice(0, 120) };
   })()`);
 
-  // Screenshot artifact (UI gate: CLAUDE.md §0.4). __reset first so the frame is canonical.
+  // Engineering console DOM gate (M10): panel exists, toggles, has charts.
+  const dom = await evaluate(`(() => {
+    const eng = document.getElementById('eng');
+    const canvases = eng ? eng.querySelectorAll('canvas').length : 0;
+    const buttons = eng ? eng.querySelectorAll('button').length : 0;
+    window.__eng.toggle();
+    const open = eng?.classList.contains('open');
+    return { exists: !!eng, canvases, buttons, open };
+  })()`);
+  const domOk = dom.exists && dom.canvases >= 3 && dom.buttons >= 20 && dom.open;
+
+  // Screenshot artifact (UI gate: CLAUDE.md §0.4). __reset first so the frame is
+  // canonical; the console stays open so the artifact shows the HILS bench too.
   await evaluate('window.__reset(), window.__advance(3), true');
   await new Promise((r) => setTimeout(r, 300)); // let a rAF render the new state
   const shot = await send('Page.captureScreenshot', { format: 'png' });
@@ -142,9 +154,10 @@ try {
   consoleErrors.forEach((e) => console.log(`  ✗ ${e}`));
   console.log(`__advance reproducible: ${det.match}`);
   console.log(`__advance + injectFault reproducible: ${det.faultMatch}`);
+  console.log(`engineering console DOM gate: ${domOk} (canvases ${dom.canvases}, buttons ${dom.buttons})`);
   console.log(`  state: ${det.sample}…`);
 
-  if (consoleErrors.length > 0 || !det.match || !det.faultMatch) failed = true;
+  if (consoleErrors.length > 0 || !det.match || !det.faultMatch || !domOk) failed = true;
   ws.close();
 } catch (err) {
   console.error(`browser check error: ${err.message}`);
