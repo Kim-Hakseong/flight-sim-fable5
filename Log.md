@@ -160,3 +160,15 @@
 - Verify the live Pages build headlessly once it finishes.
 **Notes**:
 - Pages serves the STANDALONE sim (keyboard flight + HILS console surface). The MAVLink/QGC loop still needs the local bridge (`npm run bridge`) — UDP can't ride on Pages.
+
+## 2026-07-13 — infra: live Pages verified
+
+**Status**: GREEN
+**Files changed**: tests/browser-check.mjs
+**Tests**: unit 52/52 · browser check PASS locally AND against the live Pages URL (console 0, `__advance` + fault-run reproducible)
+**Decisions**:
+- browser-check gained a `PAGE_URL` override so the same gate smoke-tests the deployed site: `PAGE_URL=https://kim-hakseong.github.io/flight-sim-fable5/ npm run check:browser`.
+**Next**:
+- (idle) Candidates unchanged: visual QGC pass, autopilot-on-estimate, engineering console.
+**Notes**:
+- Live: https://kim-hakseong.github.io/flight-sim-fable5/

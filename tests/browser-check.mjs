@@ -18,18 +18,24 @@ const MIME = {
   '.css': 'text/css', '.json': 'application/json',
 };
 
-const server = createServer(async (req, res) => {
-  const path = req.url === '/' ? '/index.html' : req.url.split('?')[0];
-  try {
-    const body = await readFile(join(ROOT, path.slice(1)));
-    res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
-    res.end(body);
-  } catch {
-    res.writeHead(404).end('not found');
-  }
-});
-await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const pageUrl = `http://127.0.0.1:${server.address().port}/`;
+// PAGE_URL overrides the local static server — e.g. smoke-test the live Pages
+// deploy: PAGE_URL=https://kim-hakseong.github.io/flight-sim-fable5/ npm run check:browser
+let server = null;
+let pageUrl = process.env.PAGE_URL;
+if (!pageUrl) {
+  server = createServer(async (req, res) => {
+    const path = req.url === '/' ? '/index.html' : req.url.split('?')[0];
+    try {
+      const body = await readFile(join(ROOT, path.slice(1)));
+      res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
+      res.end(body);
+    } catch {
+      res.writeHead(404).end('not found');
+    }
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  pageUrl = `http://127.0.0.1:${server.address().port}/`;
+}
 
 const profile = mkdtempSync(join(tmpdir(), 'fsim-chrome-'));
 const chrome = spawn(CHROME, [
@@ -51,7 +57,7 @@ const devtoolsPort = await new Promise((resolve, reject) => {
 
 function cleanup() {
   chrome.kill();
-  server.close();
+  server?.close();
   try { rmSync(profile, { recursive: true, force: true }); } catch {}
 }
 
