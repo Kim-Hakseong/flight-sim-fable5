@@ -98,7 +98,8 @@ function sensedFields(trueGeo, state, vehicle) {
 // stays console-clean. Wall clock is fine here: this is I/O, not sim time.
 export async function startTelemetry(getSnapshot, { hz = 10 } = {}) {
   try {
-    const res = await fetch('/', { method: 'HEAD' });
+    // './' not '/': under a sub-path host (GitHub Pages) the domain root is 404.
+    const res = await fetch('./', { method: 'HEAD' });
     if (!res.headers.get('x-flight-bridge')) return false;
   } catch {
     return false;

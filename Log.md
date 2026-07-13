@@ -147,3 +147,16 @@
 - Auto-push per §0.8 is now live: every loop commits AND pushes. Candidates from M6: visual QGC pass, autopilot-on-estimate, engineering console.
 **Notes**:
 - https://github.com/Kim-Hakseong/flight-sim-fable5
+
+## 2026-07-13 — infra: GitHub Pages deploy
+
+**Status**: GREEN
+**Files changed**: src/telemetry.js, Log.md
+**Tests**: unit 52/52 pass · console 0 ✓ · gcs-loop-check PASS · determinism ✓
+**Decisions**:
+- Pages enabled (main branch, root) → https://kim-hakseong.github.io/flight-sim-fable5/
+- Bridge probe fetch('/') → fetch('./'): under a sub-path host the domain root 404s; relative keeps every serving mode (Pages / python / bridge) clean.
+**Next**:
+- Verify the live Pages build headlessly once it finishes.
+**Notes**:
+- Pages serves the STANDALONE sim (keyboard flight + HILS console surface). The MAVLink/QGC loop still needs the local bridge (`npm run bridge`) — UDP can't ride on Pages.
