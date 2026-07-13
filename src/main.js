@@ -5,7 +5,7 @@
 
 import { stepAircraft, initialState } from './physics.js';
 import { startTelemetry, telemetryFrom, eulerFromQuat, headingDeg } from './telemetry.js';
-import { MODES, MODE_NAMES, apStep } from './autopilot.js';
+import { MODES, MODE_NAMES, apStep, manualControls } from './autopilot.js';
 import { startMissionLink } from './missionLink.js';
 import { toLocalTargets } from './missions.js';
 import { geodeticToLocal } from './telemetry.js';
@@ -30,7 +30,7 @@ let ap = {
   mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0,
   guided: null, mission: null,
 };
-let lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
+let lastControls = { aileron: 0, elevator: 0, rudder: 0, throttle };
 let lastReached = -1; // last mission seq completed (edge → MISSION_ITEM_REACHED)
 let params = defaultParams(); // live-tunable via PARAM_SET; persists across resets
 const SENSOR_SEED = 1;
@@ -102,7 +102,7 @@ function stepSim(dt) {
 
   let controls;
   if (ap.mode === MODES.MANUAL && !ap.landing) {
-    controls = readControls();
+    controls = manualControls(state, readControls()); // stick → surfaces, with SAS
   } else {
     const r = apStep(state, ap, params);
     ap = r.ap;
@@ -119,7 +119,7 @@ function stepSim(dt) {
   readings = sw.readings;
   if (readings.gps) lastGps = readings.gps;
   est = stepEstimator(est, readings, dt);
-  battery = stepBattery(battery, armed ? controls.throttle : 0, dt);
+  battery = stepBattery(battery, state.act.dt, dt); // actual actuator throttle
   simTime += dt;
 }
 
@@ -132,7 +132,7 @@ function reset() {
     mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0,
     guided: null, mission: null,
   };
-  lastControls = { pitch: 0, roll: 0, yaw: 0, throttle };
+  lastControls = { aileron: 0, elevator: 0, rudder: 0, throttle };
   lastReached = -1;
   sensors = createSensors(SENSOR_SEED);
   readings = null;
@@ -217,7 +217,7 @@ function render() {
   hud.textContent =
     `SPD ${spd.toFixed(1).padStart(5)} m/s` +
     `\nALT ${state.pos[1].toFixed(1).padStart(5)} m` +
-    `\nTHR ${(lastControls.throttle * 100).toFixed(0).padStart(4)} %` +
+    `\nTHR ${(state.act.dt * 100).toFixed(0).padStart(4)} %` +
     `\nT+  ${simTime.toFixed(2).padStart(6)} s${manual ? '  [manual]' : ''}` +
     `\n${armed ? 'ARMED' : 'DISARMED'} · ${modeLabel}`;
 
@@ -244,14 +244,14 @@ requestAnimationFrame(frame);
 // Feed the GCS bridge if (and only if) this page is served by it; commands ride
 // back on the same probe result.
 startTelemetry(() =>
-  telemetryFrom(state, lastControls.throttle, simTime, {
+  telemetryFrom(state, state.act.dt, simTime, {
     armed, customMode: ap.mode,
     missionSeq: ap.mission ? Math.min(ap.mission.idx, ap.mission.targets.length - 1) : -1,
     missionReached: lastReached,
     gps: lastGps, gpsDropout: readings ? !readings.gps : false,
     baroAlt: readings?.baro?.[0], health: readings?.health, faults: readings?.faults,
     est, ekf: ekfReport(est, readings),
-    ...batteryOutputs(battery, lastControls.throttle),
+    ...batteryOutputs(battery, state.act.dt),
   })
 ).then((on) => {
   if (on) {

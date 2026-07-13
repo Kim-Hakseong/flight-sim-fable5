@@ -1,18 +1,36 @@
 // Coordinate frame (do not confuse): Three.js right-handed, +Y up, −Z forward.
 // Body frame: +X right wing, +Y top, −Z nose. Signs: pitch-up +, roll-right +, yaw-right +.
 // Pure functions only — no THREE, no side effects, node-testable. Quats are [x, y, z, w].
+//
+// Flight model: full rigid-body 6-DOF (forces AND moments) with a stability-
+// derivative aero model in the style of Beard & McLain "Small Unmanned Aircraft"
+// (Aerosonde-class UAV), control surfaces behind first-order actuators, ISA
+// atmosphere, and a propeller thrust model. Internally the aero math runs in
+// standard FRD axes (x nose, y right wing, z belly) and converts at the boundary.
 
 export const G = 9.81; // m/s²
-export const MASS = 1000; // kg — small GA-class aircraft
-export const MAX_THRUST = 6000; // N — full-throttle level top speed ≈ √(6000/1.9) ≈ 56 m/s
-export const LIFT_CL0 = 5.0; // N/(m/s)² at zero AoA
-export const LIFT_CLA = 25.0; // N/(m/s)² per rad of AoA — trim AoA ≈ 2.6° at 40 m/s
-export const ALPHA_MAX = 0.35; // rad — soft stall: lift stops growing past ~20° AoA
-export const DRAG_COEF = 1.9; // N/(m/s)² of total speed
-export const LIFT_CAP = 1.8 * MASS * G; // N — saturate lift so dives can't produce silly g
-export const MAX_RATE = { pitch: 1.0, roll: 1.8, yaw: 0.5 }; // rad/s at full stick
-export const RATE_TAU = 0.25; // s — first-order lag, stick → body rate
+export const RHO0 = 1.225; // kg/m³ sea level
 
+// Airframe + stability derivatives (per rad; nondimensional rates use b/2Va, c/2Va).
+export const AC = {
+  mass: 13.5, Jx: 0.8244, Jy: 1.135, Jz: 1.759, // kg, kg·m² (Jxz ≈ 0.12 neglected)
+  S: 0.55, b: 2.9, c: 0.19, // wing area m², span m, chord m
+  // longitudinal
+  CL0: 0.28, CLa: 3.45, CLde: 0.36,
+  CD0: 0.03, Kind: 0.0231, // induced drag: CD = CD0 + Kind·CL² (1/(π·e·AR), AR≈15.3)
+  Cm0: -0.02338, Cma: -0.38, Cmq: -3.6, Cmde: -0.5,
+  // lateral-directional
+  CYb: -0.98, CYdr: 0.19,
+  Clb: -0.12, Clp: -0.26, Clr: 0.14, Clda: 0.13, Cldr: 0.008,
+  Cnb: 0.25, Cnp: 0.022, Cnr: -0.35, Cnda: -0.011, Cndr: -0.069,
+  // propulsion (T = ½ρ·Sprop·Cprop·((kMotor·δt)² − Va²))
+  sProp: 0.2027, cProp: 1.0, kMotor: 50,
+  // actuators
+  maxDef: 0.44, actTau: 0.05, thrTau: 0.4, // ±25°, surface lag s, throttle lag s
+  alphaClamp: 0.30, // rad — lift stops growing past ~17° (crude, bounded stall)
+};
+
+// --- Quaternions --------------------------------------------------------------
 export function quatMultiply(a, b) {
   const [ax, ay, az, aw] = a, [bx, by, bz, bw] = b;
   return [
@@ -32,7 +50,6 @@ export function quatNormalize(q) {
   return [q[0] / n, q[1] / n, q[2] / n, q[3] / n];
 }
 
-// Rotate world-frame vector v by quaternion q (body → world when q is the attitude).
 export function quatRotate(q, v) {
   const [qx, qy, qz, qw] = q, [vx, vy, vz] = v;
   const tx = 2 * (qy * vz - qz * vy);
@@ -52,83 +69,136 @@ export function quatIntegrate(q, omega, dt) {
   return quatNormalize([q[0] + dq[0], q[1] + dq[1], q[2] + dq[2], q[3] + dq[3]]);
 }
 
-// Stick → body rates with first-order lag. In this frame (nose −Z, top +Y):
-// pitch-up is +X rotation, yaw-right is −Y rotation, roll-right is −Z rotation.
-export function stepRates(omega, controls, dt) {
-  const target = [
-    controls.pitch * MAX_RATE.pitch,
-    -controls.yaw * MAX_RATE.yaw,
-    -controls.roll * MAX_RATE.roll,
-  ];
-  const k = Math.min(dt / RATE_TAU, 1);
-  return [
-    omega[0] + (target[0] - omega[0]) * k,
-    omega[1] + (target[1] - omega[1]) * k,
-    omega[2] + (target[2] - omega[2]) * k,
-  ];
+// --- Frame conversion: our body axes ↔ aero FRD -------------------------------
+// FRD x (nose) = −Z ours, y (right) = +X ours, z (belly) = −Y ours.
+// The same mapping converts angular rates: [p, q, r] = toFRD([wx, wy, wz]).
+export function toFRD(v) {
+  return [-v[2], v[0], -v[1]];
+}
+export function fromFRD(v) {
+  return [v[1], -v[2], -v[0]];
 }
 
-// Angle of attack (rad): + when the nose points above the velocity vector.
-export function angleOfAttack(quat, vel) {
-  const vb = quatRotate(quatConjugate(quat), vel); // velocity in body frame
-  const vFwd = -vb[2]; // along the nose
-  if (vFwd < 1) return 0; // too slow for aero angles to mean anything
-  return Math.atan2(-vb[1], vFwd);
+// --- Atmosphere + air data -----------------------------------------------------
+export function airDensity(altM) {
+  const h = Math.max(0, Math.min(altM, 11000));
+  return RHO0 * Math.pow(1 - 2.2557e-5 * h, 4.2559); // ISA troposphere
 }
 
-// World-frame net force: thrust along the nose, AoA-dependent lift along body-up
-// (capped), quadratic drag opposing velocity, gravity.
-export function aeroForces(quat, vel, throttle) {
-  const fwd = quatRotate(quat, [0, 0, -1]);
-  const up = quatRotate(quat, [0, 1, 0]);
-  const [vx, vy, vz] = vel;
-  const speed = Math.hypot(vx, vy, vz);
-  const vFwd = Math.max(0, vx * fwd[0] + vy * fwd[1] + vz * fwd[2]);
-  const thrust = throttle * MAX_THRUST;
-  const alpha = Math.max(-ALPHA_MAX, Math.min(ALPHA_MAX, angleOfAttack(quat, vel)));
-  const cl = Math.max(0, LIFT_CL0 + LIFT_CLA * alpha);
-  const lift = Math.min(cl * vFwd * vFwd, LIFT_CAP);
-  const d = DRAG_COEF * speed; // −d·v ⇒ |drag| = DRAG_COEF·speed²
-  return [
-    thrust * fwd[0] + lift * up[0] - d * vx,
-    thrust * fwd[1] + lift * up[1] - d * vy - MASS * G,
-    thrust * fwd[2] + lift * up[2] - d * vz,
+// Va (m/s), alpha, beta (rad) from the attitude + inertial velocity (no wind yet).
+export function airData(quat, vel) {
+  const [u, v, w] = toFRD(quatRotate(quatConjugate(quat), vel));
+  const Va = Math.hypot(u, v, w);
+  if (Va < 1) return { Va, alpha: 0, beta: 0, u, v, w };
+  return { Va, alpha: Math.atan2(w, u), beta: Math.asin(Math.max(-1, Math.min(1, v / Va))), u, v, w };
+}
+
+// --- Forces + moments (FRD body axes) -------------------------------------------
+// act: { da, de, dr (rad), dt (0..1) } — actual actuator positions, not commands.
+export function forcesMoments(quat, vel, omega, act, altM) {
+  const { Va, alpha, beta } = airData(quat, vel);
+  const rho = airDensity(altM);
+  const qbar = 0.5 * rho * Va * Va;
+  const [p, q, r] = toFRD(omega);
+  const A = AC;
+  const bV = Va > 1 ? A.b / (2 * Va) : 0;
+  const cV = Va > 1 ? A.c / (2 * Va) : 0;
+
+  const aEff = Math.max(-A.alphaClamp, Math.min(A.alphaClamp, alpha));
+  const CL = A.CL0 + A.CLa * aEff + A.CLde * act.de;
+  const CD = A.CD0 + A.Kind * CL * CL;
+  const lift = qbar * A.S * CL;
+  const drag = qbar * A.S * CD;
+  const fy = qbar * A.S * (A.CYb * beta + A.CYdr * act.dr);
+
+  const thrust = 0.5 * airDensity(altM) * A.sProp * A.cProp *
+    ((A.kMotor * act.dt) ** 2 - Va * Va);
+
+  const ca = Math.cos(alpha), sa = Math.sin(alpha);
+  const gBody = toFRD(quatRotate(quatConjugate(quat), [0, -A.mass * G, 0]));
+  const F = [
+    thrust - drag * ca + lift * sa + gBody[0],
+    fy + gBody[1],
+    -drag * sa - lift * ca + gBody[2],
   ];
+  const M = [
+    qbar * A.S * A.b * (A.Clb * beta + A.Clp * bV * p + A.Clr * bV * r + A.Clda * act.da + A.Cldr * act.dr),
+    qbar * A.S * A.c * (A.Cm0 + A.Cma * aEff + A.Cmq * cV * q + A.Cmde * act.de),
+    qbar * A.S * A.b * (A.Cnb * beta + A.Cnp * bV * p + A.Cnr * bV * r + A.Cnda * act.da + A.Cndr * act.dr),
+  ];
+  return { F, M, Va, alpha, beta };
 }
 
-// One fixed step of the 6-DOF-ready state. Pure: returns a fresh state object.
-// controls: { pitch, roll, yaw ∈ [−1,1], throttle ∈ [0,1] }
-export function stepAircraft(state, controls, dt) {
-  const omega = stepRates(state.omega, controls, dt);
-  const quat = quatIntegrate(state.quat, omega, dt);
-  const f = aeroForces(quat, state.vel, controls.throttle);
+// First-order actuators with deflection limits. cmds: {aileron, elevator, rudder
+// ∈ [−1,1] of max deflection; throttle ∈ [0,1]}.
+export function stepActuators(act, cmds, dt) {
+  const clamp = (x, m) => Math.max(-m, Math.min(m, x));
+  const kS = Math.min(dt / AC.actTau, 1);
+  const kT = Math.min(dt / AC.thrTau, 1);
+  const target = {
+    da: clamp((cmds.aileron ?? 0) * AC.maxDef, AC.maxDef),
+    de: clamp((cmds.elevator ?? 0) * AC.maxDef, AC.maxDef),
+    dr: clamp((cmds.rudder ?? 0) * AC.maxDef, AC.maxDef),
+    dt: Math.max(0, Math.min(1, cmds.throttle ?? 0)),
+  };
+  return {
+    da: act.da + (target.da - act.da) * kS,
+    de: act.de + (target.de - act.de) * kS,
+    dr: act.dr + (target.dr - act.dr) * kS,
+    dt: act.dt + (target.dt - act.dt) * kT,
+  };
+}
+
+// One fixed step of the rigid-body state. Pure: returns a fresh state object.
+export function stepAircraft(state, cmds, dt) {
+  const act = stepActuators(state.act, cmds, dt);
+  const { F, M } = forcesMoments(state.quat, state.vel, state.omega, act, state.pos[1]);
+
+  // Translation in the world frame (F already includes gravity).
+  const fWorld = quatRotate(state.quat, fromFRD(F));
   const vel = [
-    state.vel[0] + (f[0] / MASS) * dt,
-    state.vel[1] + (f[1] / MASS) * dt,
-    state.vel[2] + (f[2] / MASS) * dt,
+    state.vel[0] + (fWorld[0] / AC.mass) * dt,
+    state.vel[1] + (fWorld[1] / AC.mass) * dt,
+    state.vel[2] + (fWorld[2] / AC.mass) * dt,
   ];
   const pos = [
     state.pos[0] + vel[0] * dt,
     state.pos[1] + vel[1] * dt,
     state.pos[2] + vel[2] * dt,
   ];
+
+  // Rotation: Euler equations with a diagonal inertia tensor, in FRD.
+  const [p, q, r] = toFRD(state.omega);
+  const pDot = (M[0] + (AC.Jy - AC.Jz) * q * r) / AC.Jx;
+  const qDot = (M[1] + (AC.Jz - AC.Jx) * p * r) / AC.Jy;
+  const rDot = (M[2] + (AC.Jx - AC.Jy) * p * q) / AC.Jz;
+  let omega = fromFRD([p + pDot * dt, q + qDot * dt, r + rDot * dt]);
+  const quat = quatIntegrate(state.quat, omega, dt);
+
   if (pos[1] <= 0) {
-    // Crude ground for M0: clamp to the surface, kill sink, bleed speed off.
+    // Crude ground: clamp, kill sink, roll friction, damp rotation.
     pos[1] = 0;
     vel[1] = Math.max(0, vel[1]);
-    const fr = Math.max(0, 1 - 2 * dt);
+    const fr = Math.max(0, 1 - 1.2 * dt);
     vel[0] *= fr;
     vel[2] *= fr;
+    const dw = Math.max(0, 1 - 4 * dt);
+    omega = [omega[0] * dw, omega[1] * dw, omega[2] * dw];
   }
-  return { pos, vel, quat, omega };
+  return { pos, vel, quat, omega, act };
 }
 
-// Airborne cruise toward −Z ("north"), wings level.
+// Boot near the level-flight trim at Va ≈ 30 m/s: nose above the (horizontal)
+// velocity by the trim AoA, elevator + throttle at their trim settings.
+export const TRIM = { Va: 30, alpha: 0.05566, de: -0.08906, dt: 0.62747 }; // Newton-solved
+
 export function initialState() {
+  const h = TRIM.alpha / 2;
   return {
     pos: [0, 120, 0],
-    vel: [0, 0, -40],
-    quat: [0, 0, 0, 1],
+    vel: [0, 0, -TRIM.Va],
+    quat: quatNormalize([Math.sin(h), 0, 0, Math.cos(h)]), // pitched up by trim AoA
     omega: [0, 0, 0],
+    act: { da: 0, de: TRIM.de, dr: 0, dt: TRIM.dt },
   };
 }

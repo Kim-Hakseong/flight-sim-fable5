@@ -1,25 +1,28 @@
 // Coordinate frame (do not confuse): Three.js right-handed, +Y up, −Z forward.
 // Body frame: +X right wing, +Y top, −Z nose. Signs: pitch-up +, roll-right +, yaw-right +.
-// Guidance: pure functions from (state, ap) → stick controls. The physics has no
-// weathervane moment yet, so turns are flown coordinated: bank tilts the lift and
-// a computed yaw rate (g·tanφ/V) keeps the nose on the velocity vector.
+// Guidance + control by successive loop closure onto real control surfaces:
+//   heading → bank cmd → aileron (+ roll-rate damping)
+//   altitude → climb cmd → pitch cmd → elevator (+ q damping)
+//   airspeed → throttle · coordinated-turn rudder (+ yaw damping)
+// Surface sign map (from the aero derivatives): aileron+ rolls right,
+// elevator− pitches up (Cmde < 0), rudder− yaws right (Cndr < 0).
 
-import { G, MAX_RATE } from './physics.js';
+import { G, AC, TRIM, toFRD, airData } from './physics.js';
 import { eulerFromQuat, headingDeg } from './telemetry.js';
 import { missionStep, horizontalDistance } from './missions.js';
 import { defaultParams } from './params.js';
 
 const DP = defaultParams();
 
-// Must exceed the achievable turn radius (V²/g·tanφ ≈ 280 m at 40 m/s, 30° bank),
-// or the loiter rails the bank, bleeds lift, and spirals in.
-export const LOITER_RADIUS_M = 300;
+// Must exceed the achievable turn radius (V²/g·tanφ ≈ 160 m at 30 m/s, 30° bank).
+export const LOITER_RADIUS_M = 250;
 
 // ArduPlane custom_mode numbers — QGC shows these names for autopilot=3.
 export const MODES = { MANUAL: 0, AUTO: 10, RTL: 11, LOITER: 12, TAKEOFF: 13, GUIDED: 15 };
 export const MODE_NAMES = Object.fromEntries(Object.entries(MODES).map(([k, v]) => [v, k]));
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+const DE_TRIM = TRIM.de / AC.maxDef; // trim elevator, in normalized command units
 
 // Shortest signed heading error in degrees [−180, 180).
 export function headingErrorDeg(target, current) {
@@ -33,24 +36,41 @@ export function bearingToDeg(pos, to = [0, 0, 0]) {
   return headingDeg(Math.atan2(east, north));
 }
 
-// Hold a target altitude + heading: cascade of P loops onto the rate-command stick.
-// Gains come from the shared param table (PARAM_SET re-tunes them live).
-export function holdControls(state, targetAlt, targetHeading, throttleBase = null, P = DP) {
+// Hold a target altitude + heading (+ airspeed). throttleOverride pins the
+// throttle (landing glide = 0, takeoff = 1) instead of the airspeed loop.
+export function holdControls(state, targetAlt, targetHeading, throttleOverride = null, P = DP) {
   const e = eulerFromQuat(state.quat);
-  const speed = Math.max(10, Math.hypot(...state.vel));
+  const [p, q, r] = toFRD(state.omega);
+  const { Va } = airData(state.quat, state.vel);
+  const V = Math.max(Va, 10);
 
   const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
-  const bankTarget = clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
-  const roll = clamp((bankTarget - e.roll) * P.AP_ROLL_P, -1, 1);
-  // Coordinated turn: nose follows the velocity vector at ω = g·tanφ / V.
-  const yaw = clamp((G * Math.tan(e.roll)) / speed / MAX_RATE.yaw, -1, 1);
+  const bankT = clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
+  const aileron = clamp(P.AP_ROLL_KP * (bankT - e.roll) - P.AP_ROLL_KD * p, -1, 1);
+  // Coordinated turn: track the turn's kinematic yaw rate, damp the rest.
+  const rCmd = (G / V) * Math.tan(e.roll);
+  const rudder = clamp(-P.AP_YAW_KD * (rCmd - r), -1, 1);
 
-  const climbTarget = clamp((targetAlt - state.pos[1]) * P.AP_ALT_P, -P.AP_SINK_MAX, P.AP_CLIMB_MAX);
-  const pitchTarget = clamp((climbTarget - state.vel[1]) * 0.05, -0.3, 0.35);
-  const pitch = clamp((pitchTarget - e.pitch) * P.AP_PITCH_P, -1, 1);
+  const climbT = clamp((targetAlt - state.pos[1]) * P.AP_ALT_P, -P.AP_SINK_MAX, P.AP_CLIMB_MAX);
+  // Pitch target: flight-path feedforward (γ ≈ climb/Va) + trim AoA + rate feedback.
+  const thetaT = clamp(climbT / V + TRIM.alpha + 0.03 * (climbT - state.vel[1]), -0.35, 0.4);
+  const elevator = clamp(DE_TRIM - P.AP_PITCH_KP * (thetaT - e.pitch) + P.AP_PITCH_KD * q, -1, 1);
 
-  const throttle = clamp((throttleBase ?? P.AP_THR_CRUISE) + climbTarget * 0.04, 0.15, 1);
-  return { pitch, roll, yaw, throttle };
+  const throttle = throttleOverride ??
+    clamp(TRIM.dt + P.AP_THR_KP * (P.AP_VA_TRIM - Va) + 0.05 * climbT, 0, 1);
+  return { aileron, elevator, rudder, throttle };
+}
+
+// MANUAL with stability augmentation: stick → surfaces plus p/q/r damping, so a
+// keyboard can fly the bare airframe. stick: {pitch, roll, yaw ∈ [−1,1], throttle}.
+export function manualControls(state, stick) {
+  const [p, q, r] = toFRD(state.omega);
+  return {
+    aileron: clamp(stick.roll * 0.8 - 0.2 * p, -1, 1),
+    elevator: clamp(DE_TRIM - 0.7 * stick.pitch + 0.5 * q, -1, 1),
+    rudder: clamp(-0.6 * stick.yaw + 0.8 * r, -1, 1),
+    throttle: stick.throttle,
+  };
 }
 
 // One guidance step. ap: { mode, landing, targetAlt, targetHeading,
@@ -63,9 +83,12 @@ export function apStep(state, ap, P = DP) {
     ({ controls, ap: apOut, disarm, reached });
 
   if (ap.landing) {
-    const c = holdControls(state, -50, ap.targetHeading, 0, P); // drive alt down
-    const flare = state.pos[1] < 15 ? 0.6 : 1; // shallow the sink near the ground
-    const controls = { ...c, throttle: 0, pitch: c.pitch * flare };
+    // Powered approach AND powered flare — cutting power early bleeds Va and the
+    // sink returns (mushing). Airspeed loop stays on; idle only in the last metres.
+    // Commanded sink = (altT − y)·AP_ALT_P: approach −3.5, flare −1.5, touch −0.8.
+    const y = state.pos[1];
+    const altT = y < 5 ? y - 3.2 : y < 15 ? y - 6 : -50;
+    const controls = holdControls(state, altT, ap.targetHeading, y < 2 ? 0 : null, P);
     const down = state.pos[1] <= 0.5 && Math.hypot(state.vel[0], state.vel[2]) < 3;
     return out(controls, next, down);
   }
@@ -76,13 +99,14 @@ export function apStep(state, ap, P = DP) {
         next = { ...ap, mode: MODES.GUIDED }; // climb-out done: hold here
         break;
       }
-      const c = holdControls(state, ap.targetAlt, ap.targetHeading, 1, P);
-      return out({ ...c, throttle: 1 }, ap);
+      return out(holdControls(state, ap.targetAlt, ap.targetHeading, 1, P), ap);
     }
     case MODES.RTL: {
       const dist = Math.hypot(state.pos[0], state.pos[2]);
-      if (dist < LOITER_RADIUS_M) {
-        next = { ...ap, landing: true };
+      // Begin the descent early enough that touchdown lands near home:
+      // approach + flare ground distance ≈ 11·alt (measured, Va 30 / sink profile).
+      if (dist < Math.max(LOITER_RADIUS_M, 11 * state.pos[1])) {
+        next = { ...ap, landing: true, targetHeading: bearingToDeg(state.pos) };
         break;
       }
       return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P), ap);

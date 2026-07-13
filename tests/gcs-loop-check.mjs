@@ -210,17 +210,17 @@ try {
   check(paramValues.every((p) => p.param_count === PARAM_DEFS.length), 'PARAM_VALUE.param_count consistent');
 
   paramValues.length = 0;
-  await sendToBridge('PARAM_REQUEST_READ', { param_index: -1, target_system: 1, target_component: 1, param_id: 'AP_THR_CRUISE' });
+  await sendToBridge('PARAM_REQUEST_READ', { param_index: -1, target_system: 1, target_component: 1, param_id: 'AP_VA_TRIM' });
   await new Promise((r) => setTimeout(r, 300));
-  check(paramValues.some((p) => p.param_id === 'AP_THR_CRUISE'), 'PARAM_REQUEST_READ by id answered');
+  check(paramValues.some((p) => p.param_id === 'AP_VA_TRIM'), 'PARAM_REQUEST_READ by id answered');
 
   paramValues.length = 0;
-  await sendToBridge('PARAM_SET', { param_value: 9.9, target_system: 1, target_component: 1, param_id: 'AP_THR_CRUISE', param_type: 9 });
+  await sendToBridge('PARAM_SET', { param_value: 99, target_system: 1, target_component: 1, param_id: 'AP_VA_TRIM', param_type: 9 });
   await new Promise((r) => setTimeout(r, 300));
-  const echoed = paramValues.find((p) => p.param_id === 'AP_THR_CRUISE');
-  check(Math.abs(echoed?.param_value - 1) < 1e-6, `PARAM_SET out-of-range clamps to max (echoed ${echoed?.param_value})`);
+  const echoed = paramValues.find((p) => p.param_id === 'AP_VA_TRIM');
+  check(Math.abs(echoed?.param_value - 40) < 1e-6, `PARAM_SET out-of-range clamps to max (echoed ${echoed?.param_value})`);
   const paramEvt = await sseWait((e) => e.type === 'param');
-  check(paramEvt?.id === 'AP_THR_CRUISE' && Math.abs(paramEvt.value - 1) < 1e-6, 'clamped param relayed to the sim over SSE');
+  check(paramEvt?.id === 'AP_VA_TRIM' && Math.abs(paramEvt.value - 40) < 1e-6, 'clamped param relayed to the sim over SSE');
   gcs.off('message', collectParams);
 
   // 3f) M5 faults: health bits + STATUSTEXT on the inject and clear edges.

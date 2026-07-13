@@ -15,17 +15,18 @@ test('table integrity: unique MAVLink-legal ids, defaults inside their range', (
 });
 
 test('clampParam: clamps into range, rejects unknown ids and NaN', () => {
-  assert.equal(clampParam('AP_THR_CRUISE', 0.9), 0.9);
-  assert.equal(clampParam('AP_THR_CRUISE', 5), 1);
-  assert.equal(clampParam('AP_THR_CRUISE', -1), 0.2);
+  assert.equal(clampParam('AP_VA_TRIM', 28), 28);
+  assert.equal(clampParam('AP_VA_TRIM', 99), 40);
+  assert.equal(clampParam('AP_VA_TRIM', 1), 22);
   assert.equal(clampParam('NOPE', 1), null);
-  assert.equal(clampParam('AP_THR_CRUISE', NaN), null);
+  assert.equal(clampParam('AP_VA_TRIM', NaN), null);
 });
 
 test('a param change actually re-tunes the controller output', () => {
   const s = initialState();
-  const soft = { ...defaultParams(), AP_BANK_MAX: 0.15, AP_HDG_P: 0.005 };
+  const soft = { ...defaultParams(), AP_BANK_MAX: 0.15, AP_HDG_P: 0.005, AP_ROLL_KP: 0.2 };
   const base = holdControls(s, 120, 90); // 90° right of current heading
   const tuned = holdControls(s, 120, 90, null, soft);
-  assert.ok(Math.abs(tuned.roll) < Math.abs(base.roll), `soft gains must command less roll (${tuned.roll} vs ${base.roll})`);
+  assert.ok(Math.abs(tuned.aileron) < Math.abs(base.aileron),
+    `soft gains must command less aileron (${tuned.aileron} vs ${base.aileron})`);
 });

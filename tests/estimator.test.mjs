@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { createEstimator, stepEstimator, ekfReport, EKF } from '../src/estimator.js';
 import { createBattery, stepBattery, batteryOutputs, batteryCurrentA } from '../src/battery.js';
 import { createSensors, stepSensors, injectFault } from '../src/sensors.js';
-import { stepAircraft, initialState } from '../src/physics.js';
+import { stepAircraft, initialState, TRIM, AC } from '../src/physics.js';
 import { defaultParams } from '../src/params.js';
 
 const DT = 1 / 60;
 const P = defaultParams();
-const CONTROLS = { pitch: 0, roll: 0, yaw: 0, throttle: 0.7 };
+const CONTROLS = { aileron: 0, elevator: TRIM.de / AC.maxDef, rudder: 0, throttle: TRIM.dt };
 
 function flyWithNav(seconds, mutateSensors = (s) => s, seed = 21) {
   let state = initialState();

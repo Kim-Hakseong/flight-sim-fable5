@@ -69,6 +69,23 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   (arm/mode/nav), mission progress. Rounds out what QGC displays.
   *Verify:* battery gauge depletes; EKF indicator reacts to a nav fault.
 
+- **M7 — High-fidelity flight model (Simulink/UAV-grade).** Replace the rate-command
+  kinematics with a full rigid-body 6-DOF: forces AND moments, inertia tensor,
+  stability-derivative aero model (CL/CD/Cm/CY/Cl/Cn with α, β, p, q, r and control-
+  surface terms — Beard & McLain small-UAV style), control surfaces (δa/δe/δr/δt)
+  behind first-order actuators with deflection limits, ISA atmosphere (ρ(h)), and a
+  propeller thrust model. Autopilot becomes successive-loop-closure (bank→aileron+
+  roll damping, pitch→elevator+q damping, heading→bank, alt/speed→pitch/throttle);
+  MANUAL mode gets SAS damping so it stays flyable. Param table exposes the new gains.
+  *Verify:* trim exists near cruise; damped responses (unit-tested); all M2/M3
+  behaviors (takeoff/land/RTL/mission/goto) still converge closed-loop.
+
+- **M8 — Engineering visuals.** Procedural (no-asset) UAV model whose control
+  surfaces and prop VISIBLY move with the actuator states (HILS: see the outputs),
+  runway + seeded procedural terrain detail, sun light + shadows, smoothed chase
+  camera, HUD with Va/α/β/surface deflections. Still Three.js r128 CDN, no bundler.
+  *Verify:* console-0 + screenshot artifact; determinism untouched (render-only).
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

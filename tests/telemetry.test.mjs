@@ -60,9 +60,9 @@ test('telemetryFrom: initial cruise state → sane wire-ready values', () => {
   assert.ok(Math.abs(t.lat - HOME.lat) < 1e-9 && Math.abs(t.lon - HOME.lon) < 1e-9);
   assert.equal(t.relAlt, 120);
   assert.equal(t.alt, HOME.alt + 120);
-  assert.ok(Math.abs(t.vn - 40) < 1e-9, 'flying north at 40 m/s'); // vel −Z ⇒ vn +
+  assert.ok(Math.abs(t.vn - 30) < 1e-9, 'flying north at 30 m/s'); // vel −Z ⇒ vn +
   assert.ok(t.ve === 0 && t.vd === 0); // == comparison: vd is −0 (negated 0)
-  assert.ok(Math.abs(t.groundspeed - 40) < 1e-9);
+  assert.ok(Math.abs(t.groundspeed - 30) < 1e-9);
   assert.equal(t.headingDeg, 0);
   assert.equal(t.throttlePct, 65);
 });

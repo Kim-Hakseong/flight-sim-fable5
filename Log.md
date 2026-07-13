@@ -172,3 +172,20 @@
 - (idle) Candidates unchanged: visual QGC pass, autopilot-on-estimate, engineering console.
 **Notes**:
 - Live: https://kim-hakseong.github.io/flight-sim-fable5/
+
+## 2026-07-13 — M7: high-fidelity flight model (Simulink/UAV-grade)
+
+**Status**: GREEN
+**Files changed**: PRD.md (M7/M8 added), src/physics.js (rewrite), src/autopilot.js (rewrite), src/params.js, src/main.js, tests/physics.test.mjs, tests/autopilot.test.mjs, tests/{params,telemetry,estimator}.test.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 54/54 pass · console 0 ✓ · gcs-loop-check PASS · determinism ✓
+**Decisions**:
+- Full rigid-body 6-DOF: forces AND moments, diagonal inertia (Jxz≈0.12 neglected), Beard & McLain-style stability derivatives for an Aerosonde-class 13.5 kg UAV; aero math runs in standard FRD axes with a boundary conversion (toFRD/fromFRD) to keep signs auditable.
+- Control surfaces δa/δe/δr/δt behind first-order actuators (τ=0.05 s, ±25°, throttle τ=0.4 s); prop model T=½ρSprop((kΩδt)²−Va²), kMotor scaled to 50 for a sane cruise δt≈0.63; ISA density.
+- Trim (α=3.19°, δe=−0.089, δt=0.627) Newton-solved offline, hardcoded + regression-tested; open-loop modes verified realistic (short-period/phugoid damp, dutch roll damps, spiral slowly diverges).
+- Autopilot = successive loop closure onto surfaces (bank→aileron+p-damping, pitch→elevator+q-damping, coordinated-turn rudder tracking r=g·tanφ/V, alt→climb→θ, airspeed→throttle). Turns now fly at β≈0.
+- MANUAL gets SAS damping (bare airframe + keyboard = unflyable). Param table: 12 AP gains/targets (KP/KD per axis, VA_TRIM…).
+- Landing: powered approach AND powered flare (early throttle cut bled Va → mush, measured); two-stage sink profile −3.5/−1.5/−0.8, descent starts at ~11·alt from home. Touchdown sink −2.3 m/s, stops ~300 m from home, from any approach direction.
+**Next**:
+- **M8 — engineering visuals**: procedural UAV with moving control surfaces + prop, runway + seeded terrain, shadows, HUD (Va/α/β/surfaces), screenshot gate.
+**Notes**:
+- Loiter radius 250 m (turn radius at 30 m/s / 30° bank ≈ 160 m).
