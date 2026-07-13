@@ -1,0 +1,32 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit tests
+        run: npm test
+      - name: GCS loop check (bridge + fake-GCS UDP)
+        run: node tests/gcs-loop-check.mjs
+      - name: HILS scenario bench
+        run: node tests/hils-run.mjs
+      - name: Browser gate (headless Chrome, console-0 + determinism + DOM)
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node tests/browser-check.mjs
+      - name: Upload screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-screenshot
+          path: tests/artifacts/sim.png
+          if-no-files-found: ignore

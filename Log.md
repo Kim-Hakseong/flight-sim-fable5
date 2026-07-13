@@ -294,3 +294,19 @@
 - (idle)
 **Notes**:
 - Manual takeoff flow: Space(arm) → W hold → at ~20 m/s pull ↑.
+
+## 2026-07-13 — M14+M15: HILS scenario runner + CI
+
+**Status**: GREEN
+**Files changed**: PRD.md (M14–M16), src/vehicle.js (new), src/hils.js (new), src/main.js (rewritten as a thin shell), tests/hils.test.mjs + tests/hils-run.mjs (new), tests/nav-loop.test.mjs (rewritten on vehicle.js), package.json, .github/workflows/ci.yml
+**Tests**: unit 79/79 · console 0 ✓ · gcs PASS · determinism ✓ · HILS bench 5/5 PASS
+**Decisions**:
+- The whole vehicle extracted to src/vehicle.js — browser sim, node tests, and the scenario runner share ONE implementation (the nav-loop test previously hand-mirrored main.js; that duplication is gone). main.js is now a shell: keyboard, render, HUD, bridge I/O.
+- Scenario format: {boot, seed, params, events:[{t, command|fault|clear}], checks:[band|final|reach]} → deterministic run → pass/fail report with worst-values. `reach` checks take a `from` window (found the hard way: "lands by t=320" passed on the PRE-takeoff ground samples).
+- Built-in bench (5): gps-dropout-recovery, gyro-bias-absorption, mag-fault-flyable, heavy-turbulence-goto, full-sortie (cold boot → takeoff → mission → RTL → land → auto-disarm, 360 s sim in ~70 ms).
+- Surfaces: `window.__hils.list/run/runAll` (fresh vehicle per run — live sim untouched), `npm run hils [name]` CLI.
+- CI (GitHub Actions): unit + gcs-loop + HILS bench + headless-Chrome browser gate on every push/PR; screenshot uploaded as an artifact.
+**Next**:
+- **M16 — actuator faults** (servo jam/floating/slow).
+**Notes**:
+- CI's browser step uses the runner's preinstalled Chrome via CHROME_BIN.

@@ -8,6 +8,7 @@
     "test": "node --test tests/*.test.mjs",
     "bridge": "node bridge/server.mjs",
     "check:gcs": "node tests/gcs-loop-check.mjs",
+    "hils": "node tests/hils-run.mjs",
     "serve": "python3 -m http.server 8123",
     "check:browser": "node tests/browser-check.mjs"
   }

@@ -126,6 +126,26 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   *Verify:* closed-loop (fully estimated state) arm → ground roll → rotate →
   climb-out → GUIDED, holding the centerline; brake rollout stops the aircraft.
 
+- **M14 — HILS scenario runner (`__hils`).** Extract the whole vehicle (state +
+  arm/mode + params + sensors + estimators + wind + battery) into `src/vehicle.js`
+  — ONE implementation shared by the browser sim, the node tests, and the runner.
+  `src/hils.js`: declarative scenarios ({boot, seed, params, events:[{t, command|
+  fault|clear}], checks:[band/final/reach]}) run deterministically to a pass/fail
+  report. Built-in scenario library; `window.__hils.run/list` in the browser;
+  `node tests/hils-run.mjs` CLI bench.
+  *Verify:* all built-in scenarios PASS, reports are bit-identical across reruns.
+
+- **M15 — CI.** GitHub Actions on every push: unit tests, gcs-loop-check, the HILS
+  scenario bench, and the headless-Chrome browser gate.
+  *Verify:* the workflow runs green on GitHub.
+
+- **M16 — Actuator faults.** Servo fault injection per channel (δa/δe/δr/δt):
+  jam (hold position), floating (surface streams to neutral), slow (degraded slew).
+  Wired through the vehicle, the engineering-console bench, STATUSTEXT edges, and
+  HILS scenarios.
+  *Verify:* mechanics unit-tested; aircraft remains recoverable (no crash) with an
+  aileron jammed at trim; a servo scenario in the bench library.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game
