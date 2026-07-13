@@ -94,89 +94,130 @@ function scatterTrees(THREE, scene) {
   scene.add(hangar);
 }
 
-// Procedural Aerosonde-ish UAV at true scale (b = 2.9 m). Hinged surfaces are
-// separate meshes whose geometry is offset so rotation happens about the hinge.
+// Procedural F-16-style airframe (~15 m). Stabilators are all-moving (elevator),
+// flaperons + rudder hinge, afterburner flame follows the throttle. RENDER-ONLY.
 function buildAircraft(THREE) {
   const group = new THREE.Group();
-  const grey = new THREE.MeshLambertMaterial({ color: 0xdadde2 });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x3c414b });
-  const red = new THREE.MeshLambertMaterial({ color: 0xc23b3b });
+  const skin = new THREE.MeshPhongMaterial({ color: 0x77808c, shininess: 55, specular: 0x333844 });
+  const darkm = new THREE.MeshPhongMaterial({ color: 0x2c313a, shininess: 30 });
+  const glass = new THREE.MeshPhongMaterial({ color: 0x2a2418, shininess: 120, specular: 0xccbb77, transparent: true, opacity: 0.92 });
 
-  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 1.6, 10), grey);
-  fuselage.rotation.x = Math.PI / 2;
-  fuselage.position.z = 0.1;
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.35, 10), grey);
-  nose.rotation.x = -Math.PI / 2;
-  nose.position.z = -0.87;
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.1, 8), dark);
-  boom.rotation.x = Math.PI / 2;
-  boom.position.z = 1.4;
+  // Fuselage: lathe profile along the length (nose at −Z).
+  const prof = [[0, -7.5], [0.16, -6.6], [0.34, -5.4], [0.52, -3.6], [0.62, -1.2],
+    [0.66, 1.2], [0.60, 4.6], [0.46, 6.4], [0.40, 7.2]];
+  const lathe = new THREE.LatheGeometry(prof.map(([r, z]) => new THREE.Vector2(Math.max(r, 0.001), z)), 20);
+  lathe.rotateX(-Math.PI / 2);
+  const fuselage = new THREE.Mesh(lathe, skin);
+  const radome = new THREE.Mesh(new THREE.ConeGeometry(0.17, 1.0, 14), darkm);
+  radome.rotation.x = -Math.PI / 2;
+  radome.position.z = -7.0;
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), glass);
+  canopy.scale.set(0.52, 0.55, 1.7);
+  canopy.position.set(0, 0.55, -3.6);
+  const intake = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 2.6, 12), darkm);
+  intake.rotation.x = Math.PI / 2;
+  intake.position.set(0, -0.55, -0.6);
 
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(AC.b, 0.05, 0.34), grey);
-  wing.position.set(0, 0.14, -0.1);
-  const tipL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.06, 0.34), red);
-  tipL.position.set(-AC.b / 2 + 0.12, 0.14, -0.1);
-  const tipR = tipL.clone();
-  tipR.position.x = AC.b / 2 - 0.12;
-
-  // Hinged surfaces: geometry translated so the mesh origin IS the hinge line.
-  const surfGeo = (w, ch) => {
-    const gm = new THREE.BoxGeometry(w, 0.03, ch);
-    gm.translate(0, 0, ch / 2);
-    return gm;
+  const wingShape = (root, tip, span, sweep) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0);
+    sh.lineTo(span, -sweep);
+    sh.lineTo(span, -sweep - tip);
+    sh.lineTo(0, -root);
+    sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.09, bevelEnabled: false });
+    g.rotateX(Math.PI / 2); // shape y → −Z (chord), extrude → up
+    return g;
   };
-  const ailL = new THREE.Mesh(surfGeo(0.75, 0.12), red);
-  ailL.position.set(-AC.b / 2 + 0.55, 0.14, 0.07);
-  const ailR = new THREE.Mesh(surfGeo(0.75, 0.12), red);
-  ailR.position.set(AC.b / 2 - 0.55, 0.14, 0.07);
+  const wingL = new THREE.Mesh(wingShape(4.6, 1.1, 4.6, 3.4), skin);
+  wingL.position.set(0, -0.05, -1.4);
+  wingL.scale.x = -1;
+  const wingR = new THREE.Mesh(wingShape(4.6, 1.1, 4.6, 3.4), skin);
+  wingR.position.set(0, -0.05, -1.4);
 
-  const hstab = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.22), grey);
-  hstab.position.set(0, 0.05, 1.85);
-  const elev = new THREE.Mesh(surfGeo(1.0, 0.11), red);
-  elev.position.set(0, 0.05, 1.96);
+  const hinged = (w, ch) => {
+    const g = new THREE.BoxGeometry(w, 0.06, ch);
+    g.translate(0, 0, ch / 2);
+    return g;
+  };
+  const flapL = new THREE.Mesh(hinged(2.2, 0.5), darkm);
+  flapL.position.set(-3.1, 0, 3.15);
+  const flapR = new THREE.Mesh(hinged(2.2, 0.5), darkm);
+  flapR.position.set(3.1, 0, 3.15);
 
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.42, 0.26), grey);
-  fin.position.set(0, 0.26, 1.85);
-  const rudGeo = new THREE.BoxGeometry(0.03, 0.40, 0.12);
-  rudGeo.translate(0, 0, 0.06);
-  const rud = new THREE.Mesh(rudGeo, red);
-  rud.position.set(0, 0.26, 1.98);
+  // All-moving stabilators: pivot at their leading edge.
+  const stabGeo = wingShape(1.9, 0.7, 2.4, 1.5);
+  stabGeo.translate(0, 0, 0); // pivot ~ LE already at z=0 of geometry
+  const stabL = new THREE.Mesh(stabGeo, skin);
+  stabL.position.set(0, 0.05, 5.4);
+  stabL.scale.x = -1;
+  const stabR = new THREE.Mesh(wingShape(1.9, 0.7, 2.4, 1.5), skin);
+  stabR.position.set(0, 0.05, 5.4);
 
-  const prop = new THREE.Group();
-  for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.62, 0.02), dark);
-    blade.rotation.z = a;
-    prop.add(blade);
+  const finShape = new THREE.Shape();
+  finShape.moveTo(0, 0); finShape.lineTo(2.9, 1.9); finShape.lineTo(2.9, 2.9);
+  finShape.lineTo(1.1, 0); finShape.closePath();
+  const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.08, bevelEnabled: false });
+  finGeo.rotateY(Math.PI / 2); // shape x → +Z (aft), y up
+  const fin = new THREE.Mesh(finGeo, skin);
+  fin.position.set(-0.04, 0.4, 3.4);
+  const rudGeo = new THREE.BoxGeometry(0.06, 1.6, 0.55);
+  rudGeo.translate(0, 0.8, 0.27);
+  const rud = new THREE.Mesh(rudGeo, darkm);
+  rud.position.set(0, 1.6, 6.4);
+
+  // Afterburner: nozzle + throttle-driven flame (additive, deterministic flicker).
+  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.7, 14), darkm);
+  nozzle.rotation.x = Math.PI / 2;
+  nozzle.position.z = 7.4;
+  const flameGeo = new THREE.ConeGeometry(0.3, 1, 12);
+  flameGeo.translate(0, -0.5, 0);
+  const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({
+    color: 0xff8a2a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  flame.rotation.x = -Math.PI / 2;
+  flame.position.z = 7.7;
+
+  const rails = [];
+  for (const x of [-4.55, 4.55]) {
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.6, 8), darkm);
+    rail.rotation.x = Math.PI / 2;
+    rail.position.set(x, 0, 1.9);
+    rails.push(rail);
   }
-  prop.position.z = -1.06;
 
-  const gearMat = dark;
-  for (const [x, z] of [[-0.35, -0.25], [0.35, -0.25]]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6), gearMat);
-    leg.position.set(x, -0.25, z);
-    group.add(leg);
-  }
-
-  const meshes = [fuselage, nose, boom, wing, tipL, tipR, ailL, ailR, hstab, elev, fin, rud];
+  const meshes = [fuselage, radome, canopy, intake, wingL, wingR, flapL, flapR, stabL, stabR, fin, rud, nozzle, ...rails];
   meshes.forEach((m) => { m.castShadow = true; });
-  group.add(...meshes, prop);
-  return { group, ailL, ailR, elev, rud, prop };
+  group.add(...meshes, flame);
+  return { group, flapL, flapR, stabL, stabR, rud, flame };
 }
 
 export function createWorld(THREE) {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9cc0e8);
-  scene.fog = new THREE.Fog(0x9cc0e8, 700, 4200);
+  scene.background = new THREE.Color(0x86aed6);
+  scene.fog = new THREE.Fog(0xb9cbdd, 900, 5200);
 
-  scene.add(new THREE.HemisphereLight(0xe8f0ff, 0x44502f, 0.75));
-  const sun = new THREE.DirectionalLight(0xfff1d6, 1.0);
+  // Gradient sky dome (cinematic horizon haze), render-only.
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(4500, 20, 12),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: { top: { value: new THREE.Color(0x3f6fb5) }, bot: { value: new THREE.Color(0xd9e2ea) } },
+      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 bot; varying float h; void main(){ gl_FragColor = vec4(mix(bot, top, clamp(h * 1.6, 0.0, 1.0)), 1.0); }',
+    })
+  );
+  scene.add(sky);
+
+  scene.add(new THREE.HemisphereLight(0xcfe0f5, 0x3d4634, 0.55));
+  const sun = new THREE.DirectionalLight(0xffe3b8, 1.35);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.camera.near = 50;
   sun.shadow.camera.far = 600;
   const sc = sun.shadow.camera;
-  sc.left = sc.bottom = -40;
-  sc.right = sc.top = 40;
+  sc.left = sc.bottom = -70;
+  sc.right = sc.top = 70;
   scene.add(sun, sun.target);
 
   const ground = new THREE.Mesh(
@@ -198,27 +239,32 @@ export function createWorld(THREE) {
   // Everything below is driven by SIM state only — deterministic in, visuals out.
   function update(state, simTime) {
     const g = aircraft.group;
-    g.position.set(state.pos[0], state.pos[1] + 0.3, state.pos[2]); // gear height
+    g.position.set(state.pos[0], state.pos[1] + 1.5, state.pos[2]); // gear height
     g.quaternion.set(state.quat[0], state.quat[1], state.quat[2], state.quat[3]);
 
     // Surfaces mirror the ACTUATORS (δ in rad): aileron+ = right TE up, left down.
     const k = 1.6; // visual exaggeration so deflections read at a glance
-    aircraft.ailR.rotation.x = -state.act.da * k;
-    aircraft.ailL.rotation.x = state.act.da * k;
-    aircraft.elev.rotation.x = state.act.de * k;
+    aircraft.flapR.rotation.x = -state.act.da * k;
+    aircraft.flapL.rotation.x = state.act.da * k;
+    aircraft.stabL.rotation.x = state.act.de * k; // all-moving stabilators
+    aircraft.stabR.rotation.x = state.act.de * k;
     aircraft.rud.rotation.y = state.act.dr * k;
-    aircraft.prop.rotation.z = simTime * (15 + 110 * state.act.dt);
+    // Afterburner: grows with throttle, deterministic flicker from sim time.
+    const burn = Math.max(0, state.act.dt - 0.15);
+    const flick = 1 + 0.18 * Math.sin(simTime * 47) * Math.sin(simTime * 31);
+    aircraft.flame.scale.set(0.7 + burn, 0.7 + burn, (0.4 + 5.5 * burn * burn) * flick);
+    aircraft.flame.material.opacity = Math.min(0.9, 0.25 + burn);
 
     // Sun follows the aircraft so the shadow frustum stays tight.
     sun.position.set(state.pos[0] + 120, state.pos[1] + 260, state.pos[2] + 60);
     sun.target.position.set(state.pos[0], state.pos[1], state.pos[2]);
 
     // Chase camera: smoothed, world-up (no roll), looks a little ahead.
-    const back = new THREE.Vector3(0, 1.8, 8).applyQuaternion(g.quaternion);
+    const back = new THREE.Vector3(0, 6, 30).applyQuaternion(g.quaternion);
     const want = new THREE.Vector3().copy(g.position).add(back);
-    if (camera.position.distanceTo(want) > 25) camera.position.copy(want); // teleport/reset
+    if (camera.position.distanceTo(want) > 80) camera.position.copy(want); // teleport/reset
     else camera.position.lerp(want, 0.08);
-    const ahead = new THREE.Vector3(0, 0, -8).applyQuaternion(g.quaternion).add(g.position);
+    const ahead = new THREE.Vector3(0, 0, -25).applyQuaternion(g.quaternion).add(g.position);
     camera.lookAt(ahead);
   }
 

@@ -369,3 +369,15 @@
 - Real-binary smoke test: `sim_vehicle.py -v ArduPlane --model JSON` against `npm run sitl` (needs ArduPilot locally — user machine).
 **Notes**:
 - Usage: terminal 1 `npm run sitl`, terminal 2 ArduPlane `--model JSON`; QGC connects to ArduPilot itself (TCP 5760/UDP 14550), so the GCS shows a REAL autopilot flying our aero model.
+
+## 2026-07-13 — M22: cinematic F-16 visuals
+
+**Status**: GREEN
+**Files changed**: PRD.md, src/scene.js (F-16 airframe, sky dome, lighting), src/main.js (ACES tone mapping)
+**Tests**: unit 89/89 · browser PASS (console 0, determinism, DOM) · screenshot ✓
+**Decisions**:
+- Procedural F-16-style airframe at true ~15 m scale: lathe fuselage + radome + bubble canopy + intake, extruded swept wings/fin, hinged flaperons + rudder, ALL-MOVING stabilators driven by the elevator actuator, throttle-driven afterburner flame (additive, deterministic flicker from sim time). Chase camera pulled back to jet scale.
+- Cinematic pass: ACES filmic tone mapping + sRGB out, gradient sky dome shader, warm key light, horizon haze fog.
+- RENDER-ONLY by design: the flight model remains the validated small-UAV dynamics (a true F-16 model = future milestone); every gate stays green untouched.
+**Next**:
+- Optional: F-16-class flight model (mass/inertia/jet engine/coefficients) as a selectable airframe.

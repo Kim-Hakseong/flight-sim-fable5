@@ -173,6 +173,12 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   *Verify:* a fake-ArduPilot driver exercises the protocol end-to-end (lockstep
   timing, dedupe, restart, control surface signs, ground roll accelerates).
 
+- **M22 — Cinematic F-16 visuals.** Replace the UAV visual with a procedural
+  F-16-style airframe (true ~15 m scale, moving stabilators/flaperons/rudder,
+  throttle-driven afterburner) and a cinematic render pass (ACES tone mapping,
+  gradient sky dome, warm key light). RENDER-ONLY: the flight model stays the
+  validated small-UAV dynamics; a true F-16 flight model is future work.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game
