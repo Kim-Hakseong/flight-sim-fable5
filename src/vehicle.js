@@ -120,7 +120,9 @@ export function vehicleClearServoFault(v, channel) {
 }
 
 // One fixed step. stick drives MANUAL mode only (null = hands off).
-export function vehicleStep(v, dt, stick = null) {
+// `direct` (sim-as-plant): raw surface commands from an EXTERNAL controller —
+// the onboard AP/SAS is bypassed entirely; only the arm gate still applies.
+export function vehicleStep(v, dt, stick = null, direct = null) {
   // Control path sees ONLY estimated state (+ the WoW discrete).
   const rateEst = v.readings?.gyro
     ? v.readings.gyro.map((x, i) => x - v.att.bias[i])
@@ -132,7 +134,9 @@ export function vehicleStep(v, dt, stick = null) {
 
   let { ap, armed, lastReached } = v;
   let controls;
-  if (ap.mode === MODES.MANUAL && !ap.landing) {
+  if (direct) {
+    controls = direct;
+  } else if (ap.mode === MODES.MANUAL && !ap.landing) {
     // GCS joystick wins while fresh (< 1 s); keyboard/neutral is the fallback.
     const gcs = v.gcsStickAge < 1 ? v.gcsStick : null;
     controls = manualControls(nav, gcs ?? stick ?? NEUTRAL_STICK);

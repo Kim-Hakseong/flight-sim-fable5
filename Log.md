@@ -338,3 +338,18 @@
 - MAVLink v2: 0xFD framing, 24-bit msgid, trailing-zero payload truncation (restored on decode), signed packets skipped; the bridge replies in whichever framing the GCS last spoke. v1 default stays.
 **Next**:
 - **M20 — sim-as-plant** (headless vehicle in node; external controller closes the loop).
+
+## 2026-07-13 — M20: sim-as-plant (external FC over UDP lockstep)
+
+**Status**: GREEN
+**Files changed**: bridge/plant.mjs (new), src/vehicle.js (direct-controls option), tests/plant-check.mjs (new), package.json, .github/workflows/ci.yml
+**Tests**: unit 89/89 · gcs PASS · HILS bench 7/7 · plant check PASS · console 0 ✓ · determinism ✓
+**Decisions**:
+- `npm run plant`: the vehicle hosted headlessly in node; an EXTERNAL controller closes the loop over UDP JSON lockstep — controls in, SENSOR READINGS out (never truth; WoW is the only discrete). The sim advances only on ctl packets: controller-paced, deterministic, no wall clock. reset/fault message types round out the bench protocol; QGC telemetry keeps flowing.
+- vehicleStep gained a `direct` argument (raw surfaces, AP bypassed) — the plant is the same vehicle implementation as everything else, not a fork.
+- plant-check is a REAL external FC: its own estimator instances fed only by the UDP sensor stream, holdControls as its law. It holds altitude, flies a 30 s lockstep sortie in ~100 ms, reruns bit-identically, and sees injected faults purely through its sensors.
+- Fixed en route: fault opts spread let the wire field `type:'fault'` clobber the fault type (silent wrong-fault injection).
+**Next**:
+- Full backlog cleared (A–I). Natural follow-ons: ArduPilot SITL JSON adapter for the plant port, mission-item extensions, QGC visual pass.
+**Notes**:
+- The plant protocol is documented in bridge/plant.mjs header; an ArduPilot JSON-backend adapter would slot in front of it.
