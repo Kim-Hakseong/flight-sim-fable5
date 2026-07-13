@@ -85,9 +85,10 @@ export function airDensity(altM) {
   return RHO0 * Math.pow(1 - 2.2557e-5 * h, 4.2559); // ISA troposphere
 }
 
-// Va (m/s), alpha, beta (rad) from the attitude + inertial velocity (no wind yet).
-export function airData(quat, vel) {
-  const [u, v, w] = toFRD(quatRotate(quatConjugate(quat), vel));
+// Va (m/s), alpha, beta (rad) from attitude + inertial velocity − wind (world frame).
+export function airData(quat, vel, wind = [0, 0, 0]) {
+  const rel = [vel[0] - wind[0], vel[1] - wind[1], vel[2] - wind[2]];
+  const [u, v, w] = toFRD(quatRotate(quatConjugate(quat), rel));
   const Va = Math.hypot(u, v, w);
   if (Va < 1) return { Va, alpha: 0, beta: 0, u, v, w };
   return { Va, alpha: Math.atan2(w, u), beta: Math.asin(Math.max(-1, Math.min(1, v / Va))), u, v, w };
@@ -95,8 +96,8 @@ export function airData(quat, vel) {
 
 // --- Forces + moments (FRD body axes) -------------------------------------------
 // act: { da, de, dr (rad), dt (0..1) } — actual actuator positions, not commands.
-export function forcesMoments(quat, vel, omega, act, altM) {
-  const { Va, alpha, beta } = airData(quat, vel);
+export function forcesMoments(quat, vel, omega, act, altM, wind = [0, 0, 0]) {
+  const { Va, alpha, beta } = airData(quat, vel, wind);
   const rho = airDensity(altM);
   const qbar = 0.5 * rho * Va * Va;
   const [p, q, r] = toFRD(omega);
@@ -150,9 +151,9 @@ export function stepActuators(act, cmds, dt) {
 }
 
 // One fixed step of the rigid-body state. Pure: returns a fresh state object.
-export function stepAircraft(state, cmds, dt) {
+export function stepAircraft(state, cmds, dt, wind = [0, 0, 0]) {
   const act = stepActuators(state.act, cmds, dt);
-  const { F, M } = forcesMoments(state.quat, state.vel, state.omega, act, state.pos[1]);
+  const { F, M } = forcesMoments(state.quat, state.vel, state.omega, act, state.pos[1], wind);
 
   // Translation in the world frame (F already includes gravity).
   const fWorld = quatRotate(state.quat, fromFRD(F));

@@ -86,6 +86,26 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   camera, HUD with Va/α/β/surface deflections. Still Three.js r128 CDN, no bundler.
   *Verify:* console-0 + screenshot artifact; determinism untouched (render-only).
 
+- **M9 — Wind + Dryden turbulence.** Steady wind (N/E, live-settable params) plus
+  seeded Dryden gusts (Gauss-Markov per body axis, B&M Table-4.1-style Lu/Lv/Lw and
+  sigmas, intensity param). Aero runs on air-relative velocity; airspeed ≠ groundspeed.
+  Deterministic: gusts thread the same pure PRNG as the sensors.
+  *Verify:* crosswind → heading holds, ground track crabs; turbulence → autopilot
+  holds altitude band; zero-intensity + zero-wind reproduces the old trajectories.
+
+- **M10 — Engineering console (HILS bench).** `src/engineering.js`: toggleable
+  panel (KeyE) with the live state vector, estimator-vs-truth errors + variances,
+  per-sensor health with fault inject/clear buttons, wind/battery readouts, and
+  strip charts (alt truth-vs-estimate, Va, estimator error). Render-only.
+  *Verify:* console-0, DOM gate (panel toggles, charts present), screenshot.
+
+- **M11 — Autopilot flies the estimate.** Guidance/altitude/speed loops consume the
+  estimator output (+ a new faultable pitot sensor for Va) instead of truth; attitude
+  stays truth (no attitude estimator yet — future work). Touchdown detect is a
+  weight-on-wheels switch (truth), like the real discrete. Closes the HILS loop:
+  sensor fault → estimator reacts → the AIRCRAFT visibly feels it.
+  *Verify:* mission completes on estimated nav, incl. across a 10 s GPS dropout.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

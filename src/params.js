@@ -18,6 +18,10 @@ export const PARAM_DEFS = [
   { id: 'AP_SINK_MAX', def: 3.5, min: 1, max: 8 }, // m/s
   { id: 'AP_VA_TRIM', def: 30, min: 22, max: 40 }, // m/s airspeed hold target
   { id: 'AP_THR_KP', def: 0.04, min: 0, max: 0.2 }, // throttle per m/s speed err
+  // Environment (consumed by src/wind.js)
+  { id: 'WND_N_MS', def: 0, min: -20, max: 20 }, // steady wind TO north m/s
+  { id: 'WND_E_MS', def: 0, min: -20, max: 20 }, // steady wind TO east m/s
+  { id: 'WND_TRB', def: 1, min: 0, max: 3 }, // Dryden intensity scale (0 = calm)
   // Sensor error sigmas (consumed by the M5 sensor model)
   { id: 'SNS_GPS_SGM_M', def: 1.5, min: 0, max: 50 }, // m, horizontal
   { id: 'SNS_BARO_SGM_M', def: 0.4, min: 0, max: 20 }, // m

@@ -15,6 +15,7 @@ import { createEstimator, stepEstimator, ekfReport } from './estimator.js';
 import { createBattery, stepBattery, batteryOutputs } from './battery.js';
 import { airData } from './physics.js';
 import { createWorld } from './scene.js';
+import { createWind, stepWind } from './wind.js';
 
 const THREE = window.THREE;
 const DT = 1 / 60; // s — fixed physics timestep
@@ -41,6 +42,9 @@ let readings = null; // latest sensor sweep (feeds telemetry)
 let lastGps = null; // held through dropouts, like a real receiver's last fix
 let est = createEstimator(state);
 let battery = createBattery();
+const WIND_SEED = 2;
+let wind = createWind(WIND_SEED);
+let windWorld = [0, 0, 0];
 
 function setMode(m) {
   const e = eulerFromQuat(state.quat);
@@ -106,7 +110,7 @@ function stepSim(dt) {
   if (ap.mode === MODES.MANUAL && !ap.landing) {
     controls = manualControls(state, readControls()); // stick → surfaces, with SAS
   } else {
-    const r = apStep(state, ap, params);
+    const r = apStep(state, ap, params, airData(state.quat, state.vel, windWorld).Va);
     ap = r.ap;
     controls = r.controls;
     if (r.disarm) armed = false;
@@ -115,7 +119,10 @@ function stepSim(dt) {
   if (!armed) controls = { ...controls, throttle: 0 }; // DISARM cuts the engine
 
   lastControls = controls;
-  state = stepAircraft(state, controls, dt);
+  const w = stepWind(wind, state, params, dt);
+  wind = w.wind;
+  windWorld = w.windWorld;
+  state = stepAircraft(state, controls, dt, windWorld);
   const sw = stepSensors(sensors, state, params);
   sensors = sw.sensors;
   readings = sw.readings;
@@ -141,6 +148,8 @@ function reset() {
   lastGps = null;
   est = createEstimator(state);
   battery = createBattery();
+  wind = createWind(WIND_SEED);
+  windWorld = [0, 0, 0];
   keys.clear();
 }
 
@@ -152,7 +161,7 @@ window.__advance = (seconds, dt = DT) => {
   return window.__state();
 };
 window.__reset = () => reset();
-window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, est, battery, ...state });
+window.__state = () => JSON.stringify({ simTime, throttle, armed, ap, params, sensors, est, battery, wind, ...state });
 window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses, for tests/HILS
 window.injectFault = (sensor, type, opts) => { sensors = injectFault(sensors, sensor, type, opts); };
 window.clearFault = (sensor) => { sensors = clearFault(sensors, sensor); };
@@ -177,7 +186,7 @@ const DEG = 180 / Math.PI;
 function render() {
   world.update(state, simTime);
 
-  const ad = airData(state.quat, state.vel);
+  const ad = airData(state.quat, state.vel, windWorld);
   const wp = ap.mission ? ` · WP ${Math.min(ap.mission.idx + 1, ap.mission.targets.length)}/${ap.mission.targets.length}` : '';
   const modeLabel = (MODE_NAMES[ap.mode] ?? ap.mode) + (ap.landing ? '·LAND' : '') + wp;
   hud.textContent =
@@ -217,6 +226,7 @@ startTelemetry(() =>
     gps: lastGps, gpsDropout: readings ? !readings.gps : false,
     baroAlt: readings?.baro?.[0], health: readings?.health, faults: readings?.faults,
     est, ekf: ekfReport(est, readings),
+    va: airData(state.quat, state.vel, windWorld).Va,
     ...batteryOutputs(battery, state.act.dt),
   })
 ).then((on) => {

@@ -206,3 +206,18 @@
 - Candidates: engineering console (charts/state vector), autopilot-on-estimate, visual QGC pass.
 **Notes**:
 - Live after push: https://kim-hakseong.github.io/flight-sim-fable5/
+
+## 2026-07-13 — M9: wind + Dryden turbulence
+
+**Status**: GREEN
+**Files changed**: PRD.md (M9–M11), src/wind.js (new), src/physics.js, src/autopilot.js, src/params.js, src/telemetry.js, src/main.js, tests/wind.test.mjs
+**Tests**: unit 60/60 · console 0 ✓ · gcs PASS · determinism ✓
+**Decisions**:
+- Dryden as per-body-axis Gauss–Markov (B&M-style Lu/Lv/Lw = 200/200/50 m, σ = 1.06/1.06/0.7·WND_TRB), seeded + threaded like the sensor PRNG; stationary sigma unit-verified (±15%).
+- Aero now runs on air-relative velocity; airspeed ≠ groundspeed. Steady wind (WND_N/E_MS) + intensity (WND_TRB, default 1 = light) are PARAMs — QGC can gust the vehicle live.
+- holdControls gained a measured-airspeed input: found experimentally that without it the AP holds inertial speed and a 10 m/s headwind settles at Va 35.8 (realistic no-pitot behavior, but wrong target). Main feeds true Va for now; M11 swaps in a faultable pitot.
+- Verified: crosswind holds heading while the track crabs (>200 m/min at 8 m/s), headwind holds Va 30 with groundspeed 20, heavy turbulence (WND_TRB 2) stays in a ±10 m alt band.
+**Next**:
+- **M10 — engineering console** (src/engineering.js).
+**Notes**:
+- Turbulence is on by default (light) — the live page now visibly "breathes".

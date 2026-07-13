@@ -38,10 +38,12 @@ export function bearingToDeg(pos, to = [0, 0, 0]) {
 
 // Hold a target altitude + heading (+ airspeed). throttleOverride pins the
 // throttle (landing glide = 0, takeoff = 1) instead of the airspeed loop.
-export function holdControls(state, targetAlt, targetHeading, throttleOverride = null, P = DP) {
+// `va` is the MEASURED airspeed (pitot); without it the loop falls back to
+// inertial speed — i.e. it can't feel the wind, like a UAV with no airspeed sensor.
+export function holdControls(state, targetAlt, targetHeading, throttleOverride = null, P = DP, va = null) {
   const e = eulerFromQuat(state.quat);
   const [p, q, r] = toFRD(state.omega);
-  const { Va } = airData(state.quat, state.vel);
+  const Va = va ?? airData(state.quat, state.vel).Va;
   const V = Math.max(Va, 10);
 
   const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
@@ -76,7 +78,7 @@ export function manualControls(state, stick) {
 // One guidance step. ap: { mode, landing, targetAlt, targetHeading,
 // guided: {x,z,alt}|null, mission: {targets,idx}|null }.
 // Returns { controls, ap, disarm, reached } — ap may transition (pure: fresh object).
-export function apStep(state, ap, P = DP) {
+export function apStep(state, ap, P = DP, va = null) {
   let next = ap;
   let stepReached = []; // waypoint seqs completed during this step
   const out = (controls, apOut = next, disarm = false, reached = stepReached) =>
@@ -88,7 +90,7 @@ export function apStep(state, ap, P = DP) {
     // Commanded sink = (altT − y)·AP_ALT_P: approach −3.5, flare −1.5, touch −0.8.
     const y = state.pos[1];
     const altT = y < 5 ? y - 3.2 : y < 15 ? y - 6 : -50;
-    const controls = holdControls(state, altT, ap.targetHeading, y < 2 ? 0 : null, P);
+    const controls = holdControls(state, altT, ap.targetHeading, y < 2 ? 0 : null, P, va);
     const down = state.pos[1] <= 0.5 && Math.hypot(state.vel[0], state.vel[2]) < 3;
     return out(controls, next, down);
   }
@@ -99,7 +101,7 @@ export function apStep(state, ap, P = DP) {
         next = { ...ap, mode: MODES.GUIDED }; // climb-out done: hold here
         break;
       }
-      return out(holdControls(state, ap.targetAlt, ap.targetHeading, 1, P), ap);
+      return out(holdControls(state, ap.targetAlt, ap.targetHeading, 1, P, va), ap);
     }
     case MODES.RTL: {
       const dist = Math.hypot(state.pos[0], state.pos[2]);
@@ -109,7 +111,7 @@ export function apStep(state, ap, P = DP) {
         next = { ...ap, landing: true, targetHeading: bearingToDeg(state.pos) };
         break;
       }
-      return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P), ap);
+      return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P, va), ap);
     }
     case MODES.AUTO: {
       if (!ap.mission) break; // no plan yet: hold
@@ -123,11 +125,11 @@ export function apStep(state, ap, P = DP) {
       }
       if (ms.action === 'rtl') {
         next = { ...next, mode: MODES.RTL };
-        return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P), next);
+        return out(holdControls(state, Math.max(80, ap.targetAlt), bearingToDeg(state.pos), null, P, va), next);
       }
       if (ms.action === 'done') break; // mission complete: hold here
       const brg = bearingToDeg(state.pos, [ms.target.x, 0, ms.target.z]);
-      return out(holdControls(state, ms.target.alt, brg, null, P), next);
+      return out(holdControls(state, ms.target.alt, brg, null, P, va), next);
     }
     case MODES.GUIDED: {
       if (!ap.guided) break; // no target: hold
@@ -144,12 +146,12 @@ export function apStep(state, ap, P = DP) {
         const rz = dx * Math.sin(a) + dz * Math.cos(a);
         aim = [t.x + rx * LOITER_RADIUS_M, 0, t.z + rz * LOITER_RADIUS_M];
       }
-      return out(holdControls(state, t.alt, bearingToDeg(state.pos, aim), null, P), ap);
+      return out(holdControls(state, t.alt, bearingToDeg(state.pos, aim), null, P, va), ap);
     }
     default:
       break; // MANUAL(landing)/LOITER: hold captured alt + heading
   }
 
-  const controls = holdControls(state, next.targetAlt, next.targetHeading, null, P);
+  const controls = holdControls(state, next.targetAlt, next.targetHeading, null, P, va);
   return out(controls);
 }
