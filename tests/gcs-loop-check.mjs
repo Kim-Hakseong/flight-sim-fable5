@@ -284,6 +284,27 @@ try {
   check(texts6.some((x) => x.text === 'Reached waypoint #1'), 'STATUSTEXT on waypoint reach');
   gcs.off('message', collect6);
 
+  // 3h) M17–M19: WIND downlink, MANUAL_CONTROL → stick over SSE, v2 auto-upgrade.
+  received.delete('WIND');
+  await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...frame, windN: -6, windE: 0 }),
+  });
+  const windMsg = await waitFor('WIND');
+  check(windMsg?.crcOk && Math.abs(windMsg.fields.direction - 0) < 1 && Math.abs(windMsg.fields.speed - 6) < 0.1,
+    'WIND downlink (from-north 6 m/s)');
+
+  await sendToBridge('MANUAL_CONTROL', { x: -500, y: 300, z: 800, r: 0, buttons: 0, target: 1 });
+  const stickEvt = await sseWait((e) => e.type === 'stick');
+  check(stickEvt && Math.abs(stickEvt.pitch - 0.5) < 1e-6 && Math.abs(stickEvt.throttle - 0.8) < 1e-6,
+    'MANUAL_CONTROL relayed as a stick command');
+
+  received.delete('HEARTBEAT');
+  gcs.send(encode('HEARTBEAT', { custom_mode: 0, type: 6, autopilot: 8, base_mode: 0, system_status: 4, mavlink_version: 3 }, { v2: true }),
+    bridgeAddr.port, bridgeAddr.address);
+  const hb2 = await waitFor('HEARTBEAT');
+  check(hb2?.v2 === true && hb2.crcOk, 'bridge auto-upgrades to v2 framing after hearing v2');
+
   // Reconnect: the bridge must replay the last command (monotonic seq dedupe).
   const sse2 = await fetch(`http://127.0.0.1:${httpPort}/commands`);
   const r2 = sse2.body.getReader();
@@ -294,7 +315,7 @@ try {
     if (done) break;
     replay += new TextDecoder().decode(value);
   }
-  check(replay.includes('"type":"param"'), 'last command replayed on SSE (re)connect');
+  check(replay.includes('"type":"stick"'), 'last command replayed on SSE (re)connect');
   r2.cancel().catch(() => {});
   reader.cancel().catch(() => {});
 

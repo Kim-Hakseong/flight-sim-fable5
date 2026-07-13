@@ -134,6 +134,35 @@ test('decode: rejects a corrupted CRC and resyncs past garbage', () => {
   assert.equal(msg.crcOk, true);
 });
 
+test('v2: round-trip with payload truncation restored, v1 interop intact', () => {
+  const hb = {
+    custom_mode: 0, type: 1, autopilot: 3, base_mode: 81, system_status: 4, mavlink_version: 3,
+  };
+  const pkt = encode('HEARTBEAT', hb, { seq: 9, v2: true });
+  assert.equal(pkt[0], 0xfd);
+  const m = decode(pkt);
+  assert.equal(m.v2, true);
+  assert.equal(m.crcOk, true);
+  assert.deepEqual(m.fields, { ...hb });
+
+  // TRAILING zeros truncate on the wire and must be restored on decode.
+  const ackPkt = encode('COMMAND_ACK', { command: 400, result: 0 }, { v2: true });
+  assert.equal(ackPkt.length, 10 + 2 + 2, `payload must shrink to 2 bytes (got ${ackPkt.length - 12})`);
+  const ack = decode(ackPkt);
+  assert.equal(ack.crcOk, true);
+  assert.equal(ack.fields.command, 400);
+  assert.equal(ack.fields.result, 0, 'truncated byte restored as 0');
+
+  const mc = decode(encode('MANUAL_CONTROL', { x: -1000, y: 500, z: 750, r: -250, buttons: 0, target: 1 }, { v2: true }));
+  assert.equal(mc.crcOk, true);
+  assert.equal(mc.fields.x, -1000);
+
+  const wind = decode(encode('WIND', { direction: 270, speed: 8.2, speed_z: 0 }));
+  assert.equal(wind.crcOk, true);
+  assert.ok(Math.abs(wind.fields.speed - 8.2) < 1e-4);
+  assert.equal(decode(encode('HEARTBEAT', hb)).v2, false, 'v1 still frames as v1');
+});
+
 test('decode: returns null on truncated or unknown input', () => {
   assert.equal(decode(new Uint8Array([0xfe, 9, 0, 1])), null);
   assert.equal(decode(new Uint8Array(20).fill(0x55)), null);

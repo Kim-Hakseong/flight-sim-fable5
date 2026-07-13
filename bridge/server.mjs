@@ -27,9 +27,10 @@ let seq = 0;
 // QGC's UDP link replies to whatever source last talked to it; remember the
 // peer that actually sent us traffic and prefer it as the destination.
 let gcsAddr = null;
+let gcsV2 = false; // reply in the framing the GCS last spoke
 
 function sendMsg(name, fields) {
-  const pkt = encode(name, fields, { seq: seq++, sysid: SYSID, compid: 1 });
+  const pkt = encode(name, fields, { seq: seq++, sysid: SYSID, compid: 1, v2: gcsV2 });
   const host = gcsAddr?.address ?? GCS_HOST;
   const port = gcsAddr?.port ?? GCS_PORT;
   udp.send(pkt, port, host);
@@ -46,7 +47,7 @@ function pushCommand(cmd) {
   lastCmd = { seq: cmdSeq++, ...cmd };
   const line = `data: ${JSON.stringify(lastCmd)}\n\n`;
   for (const res of sseClients) res.write(line);
-  console.log(`bridge → sim: ${JSON.stringify(lastCmd)}`);
+  if (cmd.type !== 'stick') console.log(`bridge → sim: ${JSON.stringify(lastCmd)}`);
 }
 
 const MAV_RESULT_ACCEPTED = 0;
@@ -168,8 +169,16 @@ udp.on('message', (buf, rinfo) => {
     if (msg) console.log(`gcs → bridge: ${msg.name} (BAD CRC, dropped)`);
     return;
   }
+  gcsV2 = msg.v2;
   const f = msg.fields;
   switch (msg.name) {
+    case 'MANUAL_CONTROL': // QGC virtual joystick: x fwd(+)=nose down, z 0..1000
+      pushCommand({
+        type: 'stick',
+        pitch: -f.x / 1000, roll: f.y / 1000, yaw: f.r / 1000,
+        throttle: Math.max(0, Math.min(1, f.z / 1000)),
+      });
+      break;
     case 'COMMAND_LONG':
       sendMsg('COMMAND_ACK', { command: f.command, result: handleCommandLong(f) });
       break;
@@ -300,6 +309,11 @@ function relayTelemetry(t) {
     battery_remaining: t.battPct ?? -1,
   });
   if (t.ekf) sendMsg('EKF_STATUS_REPORT', t.ekf);
+  const wSpd = Math.hypot(t.windN ?? 0, t.windE ?? 0);
+  sendMsg('WIND', { // meteorological: direction the wind comes FROM
+    direction: ((Math.atan2(-(t.windE ?? 0), -(t.windN ?? 0)) * 180) / Math.PI + 360) % 360,
+    speed: wSpd, speed_z: 0,
+  });
   statusTextOnFaultEdges(t.faults);
   statusTextOnLifecycleEdges(t);
   if (t.missionSeq >= 0) sendMsg('MISSION_CURRENT', { seq: t.missionSeq });

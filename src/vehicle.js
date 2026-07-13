@@ -12,6 +12,7 @@ import { defaultParams, clampParam } from './params.js';
 import { createSensors, stepSensors, injectFault, clearFault } from './sensors.js';
 import {
   createEstimator, stepEstimator, createAttEstimator, stepAttEstimator, ekfReport,
+  createWindEstimator, stepWindEstimator,
 } from './estimator.js';
 import { createBattery, stepBattery, batteryOutputs } from './battery.js';
 import { createWind, stepWind } from './wind.js';
@@ -39,6 +40,8 @@ export function createVehicle({ boot = 'ground', sensorSeed = 1, windSeed = 2, p
     windWorld: [0, 0, 0],
     lastControls: { aileron: 0, elevator: 0, rudder: 0, throttle: 0 },
     lastReached: -1,
+    windEst: createWindEstimator(),
+    gcsStick: null, gcsStickAge: 1e9, // MANUAL_CONTROL joystick (freshness-gated)
     servoFaults: {}, // channel (da/de/dr/dt) → {type: jam|floating|slow, factor?}
   };
 }
@@ -82,6 +85,12 @@ export function vehicleCommand(v, cmd) {
       const alt = Math.max(40, cmd.alt > 1 ? cmd.alt : v.est.pos[1]);
       return { ...next, ap: { ...next.ap, guided: { x, z, alt } } };
     }
+    case 'stick':
+      return {
+        ...v,
+        gcsStick: { pitch: cmd.pitch, roll: cmd.roll, yaw: cmd.yaw, throttle: cmd.throttle },
+        gcsStickAge: 0,
+      };
     case 'param': {
       const val = clampParam(cmd.id, cmd.value);
       if (val === null) return v;
@@ -118,13 +127,15 @@ export function vehicleStep(v, dt, stick = null) {
     : v.readings ? [0, 0, 0] : v.state.omega;
   const nav = {
     ...v.state, pos: v.est.pos, vel: v.est.vel, quat: v.att.quat, omega: rateEst,
-    wow: v.state.pos[1] <= 0.5,
+    windEst: v.windEst, wow: v.state.pos[1] <= 0.5,
   };
 
   let { ap, armed, lastReached } = v;
   let controls;
   if (ap.mode === MODES.MANUAL && !ap.landing) {
-    controls = manualControls(nav, stick ?? NEUTRAL_STICK);
+    // GCS joystick wins while fresh (< 1 s); keyboard/neutral is the fallback.
+    const gcs = v.gcsStickAge < 1 ? v.gcsStick : null;
+    controls = manualControls(nav, gcs ?? stick ?? NEUTRAL_STICK);
   } else {
     const r = apStep(nav, ap, v.params, v.readings?.pitot?.[0] ?? null);
     ap = r.ap;
@@ -146,7 +157,9 @@ export function vehicleStep(v, dt, stick = null) {
     lastGps: sw.readings.gps ?? v.lastGps,
     att: stepAttEstimator(v.att, sw.readings, dt),
     est: stepEstimator(v.est, sw.readings, dt),
+    windEst: stepWindEstimator(v.windEst, v.est, v.att, sw.readings, dt),
     battery: stepBattery(v.battery, state.act.dt, dt),
+    gcsStickAge: v.gcsStickAge + dt,
     simTime: v.simTime + dt,
   };
 }
@@ -167,6 +180,7 @@ export function vehicleTelemetry(v) {
     est: v.est, ekf: ekfReport(v.est, v.readings),
     va: v.readings?.pitot?.[0] ?? undefined,
     attQuat: v.att.quat,
+    windEst: v.windEst,
     omega: v.readings?.gyro ? v.readings.gyro.map((x, i) => x - v.att.bias[i]) : v.state.omega,
     ...batteryOutputs(v.battery, v.state.act.dt),
   });

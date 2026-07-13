@@ -91,6 +91,22 @@ export function stepAttEstimator(att, readings, dt) {
   };
 }
 
+// --- Wind estimation: ground velocity (nav) − airspeed vector (pitot × attitude).
+// Slow low-pass (τ ≈ 8 s); only updated when both sources are healthy and flying.
+export function createWindEstimator() {
+  return { n: 0, e: 0 };
+}
+
+export function stepWindEstimator(we, est, att, readings, dt) {
+  const va = readings?.pitot?.[0];
+  if (va === undefined || va === null || va < 8) return we; // need airflow + pitot
+  const fwd = quatRotate(att.quat, [0, 0, -1]); // estimated nose, world frame
+  const wN = -est.vel[2] - va * -fwd[2]; // north: ground − air
+  const wE = est.vel[0] - va * fwd[0];
+  const k = Math.min(dt / 8, 1);
+  return { n: we.n + (wN - we.n) * k, e: we.e + (wE - we.e) * k };
+}
+
 export function createEstimator(state) {
   return {
     pos: [...state.pos], vel: [...state.vel],

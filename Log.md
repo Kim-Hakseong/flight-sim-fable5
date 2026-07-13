@@ -324,3 +324,17 @@
 - A→B→D done. Remaining candidates: wind estimation, QGC virtual joystick, MAVLink v2, sim-as-plant external FC interface.
 **Notes**:
 - The bench earned its keep on day one: it exposed a genuine unrecoverable failure mode and validated the control-law fix, all deterministic and CI-gated.
+
+## 2026-07-13 — M17+M18+M19: wind estimation, GCS joystick, MAVLink v2
+
+**Status**: GREEN
+**Files changed**: PRD.md (M17–M20), src/estimator.js (wind est), src/autopilot.js (crab), src/vehicle.js, src/telemetry.js, bridge/mavlink.mjs (v2 framing, WIND, MANUAL_CONTROL), bridge/server.mjs, tests/wind-est.test.mjs (new), tests/mavlink.test.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 89/89 · gcs PASS · HILS bench 7/7 · console 0 ✓ · determinism ✓
+**Decisions**:
+- Wind estimate = nav ground-velocity − pitot·(estimated nose), τ=8 s low-pass, gated on airflow ≥ 8 m/s. Converges within ±1.5 m/s (unit-tested).
+- Guidance headings are now COURSES: holdControls crabs into the estimated crosswind (asin(w_cross/Va)); an 8 m/s crosswind hold drifts < 2 m/s where it used to crab away at ~4 m/s. Old no-estimate behavior remains when nav state carries no windEst.
+- WIND (ardupilotmega 168) downlinked — QGC shows the wind arrow from the vehicle's own estimate.
+- MANUAL_CONTROL (QGC virtual joystick) → SSE 'stick' (log-quiet) → MANUAL mode, freshness-gated at 1 s with keyboard fallback; QGC x+ (stick fwd) maps to nose-down.
+- MAVLink v2: 0xFD framing, 24-bit msgid, trailing-zero payload truncation (restored on decode), signed packets skipped; the bridge replies in whichever framing the GCS last spoke. v1 default stays.
+**Next**:
+- **M20 — sim-as-plant** (headless vehicle in node; external controller closes the loop).

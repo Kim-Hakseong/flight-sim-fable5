@@ -47,7 +47,15 @@ export function holdControls(state, targetAlt, targetHeading, throttleOverride =
   const Va = va ?? airData(state.quat, state.vel).Va;
   const V = Math.max(Va, 10);
 
-  const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
+  // targetHeading is a COURSE over ground: with a wind estimate on the nav state,
+  // crab into the crosswind so the TRACK (not the nose) follows it.
+  let hdgCmd = targetHeading;
+  if (state.windEst) {
+    const cRad = (targetHeading * Math.PI) / 180;
+    const wCross = state.windEst.e * Math.cos(cRad) - state.windEst.n * Math.sin(cRad);
+    hdgCmd -= (Math.asin(clamp(wCross / V, -0.6, 0.6)) * 180) / Math.PI;
+  }
+  const hdgErr = headingErrorDeg(hdgCmd, headingDeg(e.yaw));
   const bankT = clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
   const aileron = clamp(P.AP_ROLL_KP * (bankT - e.roll) - P.AP_ROLL_KD * p, -1, 1);
   // Coordinated turn: track the turn's kinematic yaw rate, damp the rest — plus a

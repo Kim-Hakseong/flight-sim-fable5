@@ -146,6 +146,25 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   *Verify:* mechanics unit-tested; aircraft remains recoverable (no crash) with an
   aileron jammed at trim; a servo scenario in the bench library.
 
+- **M17 — Wind estimation.** Estimate the wind vector onboard (GPS ground velocity
+  minus pitot·heading air vector, slow low-pass) and use it: guidance headings become
+  COURSES with crab compensation; downlink the ardupilotmega WIND message so QGC
+  shows it. *Verify:* estimate converges on the true steady wind; a crosswind leg's
+  cross-track error shrinks vs uncompensated.
+
+- **M18 — GCS manual control.** Decode MANUAL_CONTROL (QGC virtual joystick) and
+  drive MANUAL mode with it (freshness-gated; keyboard is the fallback).
+  *Verify:* packet round-trip + stick moves the surfaces through the whole path.
+
+- **M19 — MAVLink v2.** Frame v2 (0xFD, 24-bit msgid, payload truncation) alongside
+  v1: decode both always, reply in the version the GCS last spoke.
+  *Verify:* v1/v2 round-trips, truncation restored, bridge auto-upgrades.
+
+- **M20 — Sim-as-plant.** Headless vehicle hosted in node (`npm run plant`): an
+  EXTERNAL controller closes the loop over UDP JSON lockstep (controls in → sensors
+  out), which is the real meaning of HILS. QGC telemetry keeps flowing.
+  *Verify:* an external test controller flies the plant; lockstep is deterministic.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

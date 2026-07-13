@@ -174,6 +174,17 @@ export const MESSAGES = {
       ['current', 'uint8'], ['autocontinue', 'uint8'],
     ],
   },
+  MANUAL_CONTROL: { // GCS virtual joystick; axes −1000..1000, z 0..1000
+    id: 69, crcExtra: 243,
+    fields: [
+      ['x', 'int16'], ['y', 'int16'], ['z', 'int16'], ['r', 'int16'],
+      ['buttons', 'uint16'], ['target', 'uint8'],
+    ],
+  },
+  WIND: { // ardupilotmega: QGC's wind indicator. direction = coming-FROM, deg
+    id: 168, crcExtra: 1,
+    fields: [['direction', 'float'], ['speed', 'float'], ['speed_z', 'float']],
+  },
   COMMAND_LONG: {
     id: 76, crcExtra: 152,
     fields: [
@@ -216,54 +227,95 @@ export function crcX25(bytes, crc = 0xffff) {
   return crc;
 }
 
-export function encode(name, values, { seq = 0, sysid = 1, compid = 1 } = {}) {
-  const def = MESSAGES[name];
-  if (!def) throw new Error(`unknown message: ${name}`);
-  const len = payloadLength(def);
-  const buf = new Uint8Array(6 + len + 2);
-  const view = new DataView(buf.buffer);
-  buf[0] = MAGIC_V1;
-  buf[1] = len;
-  buf[2] = seq & 0xff;
-  buf[3] = sysid;
-  buf[4] = compid;
-  buf[5] = def.id;
-  let o = 6;
+export const MAGIC_V2 = 0xfd;
+
+function packPayload(def, values) {
+  const full = new Uint8Array(payloadLength(def));
+  const view = new DataView(full.buffer);
+  let o = 0;
   for (const [field, type] of def.fields) {
     TYPES[type].set(view, o, values[field] ?? 0);
     o += TYPES[type].size;
   }
-  let crc = crcX25(buf.subarray(1, 6 + len));
+  return full;
+}
+
+// v2 framing: 0xFD, 24-bit msgid, trailing zero bytes of the payload truncated.
+export function encode(name, values, { seq = 0, sysid = 1, compid = 1, v2 = false } = {}) {
+  const def = MESSAGES[name];
+  if (!def) throw new Error(`unknown message: ${name}`);
+  const payload = packPayload(def, values);
+  if (!v2) {
+    const len = payload.length;
+    const buf = new Uint8Array(6 + len + 2);
+    buf.set([MAGIC_V1, len, seq & 0xff, sysid, compid, def.id], 0);
+    buf.set(payload, 6);
+    let crc = crcX25(buf.subarray(1, 6 + len));
+    crc = crcAccumulate(def.crcExtra, crc);
+    new DataView(buf.buffer).setUint16(6 + len, crc, true);
+    return buf;
+  }
+  let len = payload.length;
+  while (len > 1 && payload[len - 1] === 0) len--; // v2 payload truncation
+  const buf = new Uint8Array(10 + len + 2);
+  buf.set([
+    MAGIC_V2, len, 0, 0, seq & 0xff, sysid, compid,
+    def.id & 0xff, (def.id >> 8) & 0xff, (def.id >> 16) & 0xff,
+  ], 0);
+  buf.set(payload.subarray(0, len), 10);
+  let crc = crcX25(buf.subarray(1, 10 + len));
   crc = crcAccumulate(def.crcExtra, crc);
-  view.setUint16(6 + len, crc, true);
+  new DataView(buf.buffer).setUint16(10 + len, crc, true);
   return buf;
 }
 
-// Decode the first well-formed v1 packet found in buf.
-// Returns { name, msgid, seq, sysid, compid, fields, crcOk, bytes } or null.
+function unpack(def, buf, start, len) {
+  const full = new Uint8Array(payloadLength(def)); // zero-extend truncated v2 payloads
+  full.set(buf.subarray(start, start + len));
+  const view = new DataView(full.buffer);
+  const fields = {};
+  let o = 0;
+  for (const [field, type] of def.fields) {
+    fields[field] = TYPES[type].get(view, o);
+    o += TYPES[type].size;
+  }
+  return fields;
+}
+
+// Decode the first well-formed v1 OR v2 packet found in buf.
+// Returns { name, msgid, seq, sysid, compid, fields, crcOk, v2, bytes } or null.
 export function decode(buf) {
   for (let i = 0; i + 8 <= buf.length; i++) {
-    if (buf[i] !== MAGIC_V1) continue;
-    const len = buf[i + 1];
-    const end = i + 6 + len + 2;
-    if (end > buf.length) continue;
-    const msgid = buf[i + 5];
-    const def = MESSAGES_BY_ID.get(msgid);
-    if (!def || payloadLength(def) !== len) continue;
-    let crc = crcX25(buf.subarray(i + 1, i + 6 + len));
-    crc = crcAccumulate(def.crcExtra, crc);
-    const wire = buf[i + 6 + len] | (buf[i + 6 + len + 1] << 8);
-    const view = new DataView(buf.buffer, buf.byteOffset + i + 6, len);
-    const fields = {};
-    let o = 0;
-    for (const [field, type] of def.fields) {
-      fields[field] = TYPES[type].get(view, o);
-      o += TYPES[type].size;
+    if (buf[i] === MAGIC_V1) {
+      const len = buf[i + 1];
+      const end = i + 6 + len + 2;
+      if (end > buf.length) continue;
+      const def = MESSAGES_BY_ID.get(buf[i + 5]);
+      if (!def || payloadLength(def) !== len) continue;
+      let crc = crcX25(buf.subarray(i + 1, i + 6 + len));
+      crc = crcAccumulate(def.crcExtra, crc);
+      const wire = buf[i + 6 + len] | (buf[i + 6 + len + 1] << 8);
+      return {
+        name: def.name, msgid: def.id, seq: buf[i + 2], sysid: buf[i + 3], compid: buf[i + 4],
+        fields: unpack(def, buf, i + 6, len), crcOk: wire === crc, v2: false, bytes: end - i,
+      };
     }
-    return {
-      name: def.name, msgid, seq: buf[i + 2], sysid: buf[i + 3], compid: buf[i + 4],
-      fields, crcOk: wire === crc, bytes: end - i,
-    };
+    if (buf[i] === MAGIC_V2) {
+      const len = buf[i + 1];
+      if (buf[i + 2] & 0x01) continue; // signed packets unsupported: skip
+      const end = i + 10 + len + 2;
+      if (end > buf.length) continue;
+      const msgid = buf[i + 7] | (buf[i + 8] << 8) | (buf[i + 9] << 16);
+      const def = MESSAGES_BY_ID.get(msgid);
+      if (!def || len > payloadLength(def)) continue;
+      let crc = crcX25(buf.subarray(i + 1, i + 10 + len));
+      crc = crcAccumulate(def.crcExtra, crc);
+      const wire = buf[i + 10 + len] | (buf[i + 10 + len + 1] << 8);
+      return {
+        name: def.name, msgid, seq: buf[i + 4], sysid: buf[i + 5], compid: buf[i + 6],
+        fields: unpack(def, buf, i + 10, len), crcOk: wire === crc, v2: true, bytes: end - i,
+      };
+    }
   }
   return null;
 }

@@ -74,6 +74,7 @@ export function telemetryFrom(state, throttle, simTime, vehicle = { armed: true,
     armed: vehicle.armed, customMode: vehicle.customMode,
     missionSeq: vehicle.missionSeq ?? -1, missionReached: vehicle.missionReached ?? -1,
     ekf: vehicle.ekf ?? null,
+    windN: vehicle.windEst?.n ?? 0, windE: vehicle.windEst?.e ?? 0,
     battMv: vehicle.battMv ?? 12600, battCa: vehicle.battCa ?? -1, battPct: vehicle.battPct ?? -1,
     ...sensedFields(geo, state, vehicle),
   };
