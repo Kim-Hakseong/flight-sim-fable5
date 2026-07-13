@@ -290,9 +290,9 @@ function relayTelemetry(t) {
     cog: Math.round(t.headingDeg * 100) % 36000,
     fix_type: t.gpsFix ?? 3, satellites_visible: t.gpsSats ?? 12,
   });
-  const health = (t.health ?? 47) >>> 0;
+  const health = (t.health ?? 63) >>> 0;
   sendMsg('SYS_STATUS', {
-    onboard_control_sensors_present: 47, onboard_control_sensors_enabled: 47,
+    onboard_control_sensors_present: 63, onboard_control_sensors_enabled: 63,
     onboard_control_sensors_health: health,
     load: 250, voltage_battery: t.battMv ?? 12600, current_battery: t.battCa ?? -1,
     drop_rate_comm: 0, errors_comm: 0,

@@ -111,7 +111,13 @@ function stepSim(dt) {
   if (ap.mode === MODES.MANUAL && !ap.landing) {
     controls = manualControls(state, readControls()); // stick → surfaces, with SAS
   } else {
-    const r = apStep(state, ap, params, airData(state.quat, state.vel, windWorld).Va);
+    // HILS closure: guidance flies the ESTIMATOR's nav + the pitot's airspeed.
+    // Attitude/rates stay truth (no attitude estimator yet); WoW is the real switch.
+    const nav = {
+      ...state, pos: est.pos, vel: est.vel,
+      wow: state.pos[1] <= 0.5,
+    };
+    const r = apStep(nav, ap, params, readings?.pitot?.[0] ?? null);
     ap = r.ap;
     controls = r.controls;
     if (r.disarm) armed = false;
@@ -124,7 +130,7 @@ function stepSim(dt) {
   wind = w.wind;
   windWorld = w.windWorld;
   state = stepAircraft(state, controls, dt, windWorld);
-  const sw = stepSensors(sensors, state, params);
+  const sw = stepSensors(sensors, state, params, windWorld);
   sensors = sw.sensors;
   readings = sw.readings;
   if (readings.gps) lastGps = readings.gps;

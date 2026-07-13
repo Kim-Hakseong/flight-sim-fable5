@@ -91,7 +91,10 @@ export function apStep(state, ap, P = DP, va = null) {
     const y = state.pos[1];
     const altT = y < 5 ? y - 3.2 : y < 15 ? y - 6 : -50;
     const controls = holdControls(state, altT, ap.targetHeading, y < 2 ? 0 : null, P, va);
-    const down = state.pos[1] <= 0.5 && Math.hypot(state.vel[0], state.vel[2]) < 3;
+    // Touchdown = weight-on-wheels (a real discrete, state.wow) when provided —
+    // estimated altitude is too noisy to declare "on the ground" by itself.
+    const wow = state.wow ?? state.pos[1] <= 0.5;
+    const down = wow && Math.hypot(state.vel[0], state.vel[2]) < 3;
     return out(controls, next, down);
   }
 

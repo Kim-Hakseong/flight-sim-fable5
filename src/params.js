@@ -26,6 +26,7 @@ export const PARAM_DEFS = [
   { id: 'SNS_GPS_SGM_M', def: 1.5, min: 0, max: 50 }, // m, horizontal
   { id: 'SNS_BARO_SGM_M', def: 0.4, min: 0, max: 20 }, // m
   { id: 'SNS_GYRO_SGM_R', def: 0.002, min: 0, max: 0.5 }, // rad/s
+  { id: 'SNS_PIT_SGM_MS', def: 0.5, min: 0, max: 10 }, // m/s, pitot airspeed
   { id: 'SNS_ACC_SGM_MS2', def: 0.05, min: 0, max: 5 }, // m/s²
 ];
 

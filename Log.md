@@ -235,3 +235,18 @@
 - **M11 — autopilot flies the estimate** (+ pitot sensor).
 **Notes**:
 - Fault demo is now one click: E → gps [drop] → watch est errH chart climb while QGC's GPS goes red.
+
+## 2026-07-13 — M11: autopilot flies the estimate (HILS loop closed)
+
+**Status**: GREEN
+**Files changed**: src/sensors.js (pitot), src/estimator.js (velocity + FDE rework), src/autopilot.js (WoW), src/main.js, src/params.js, src/telemetry.js, bridge/server.mjs, tests/nav-loop.test.mjs (new), tests/gcs-loop-check.mjs
+**Tests**: unit 64/64 · console 0 ✓ · gcs PASS · determinism ✓ (full closed loop bit-identical)
+**Decisions**:
+- Guidance/alt/speed loops now consume the ESTIMATOR nav + a new faultable pitot (diff-pressure bit 16; SENSORS_PRESENT 47→63). Attitude/rates stay truth — an attitude estimator is future work, stated openly.
+- Touchdown is a weight-on-wheels discrete from truth (est altitude too noisy to declare ground), like the real switch.
+- Estimator rework, found via the new full-loop tests: (1) velocity from 1-step GPS deltas amplifies noise by 1/dt (±tens of m/s garbage) → replaced with 2 s/1 s long-baseline differences; (2) after a long outage the recovery innovation exceeded the gate and the filter wedged → FDE backstop re-anchors after 8 s of continuous rejection.
+- New gate tests/nav-loop.test.mjs runs the WHOLE stack (wind→physics→sensors→estimator→AP): 3-wp mission in turbulence, 12 s GPS dropout mid-leg (coast err < 80 m, mission completes), RTL to WoW disarm, bit-exact rerun.
+**Next**:
+- M9–M11 done. Candidates: attitude estimator (gyro+accel+mag complementary/EKF), QGC visual pass, ground-roll takeoff from the runway.
+**Notes**:
+- The fault story is now end-to-end: inject GPS dropout → estimator coasts (EKF variance climbs in QGC + console chart) → the aircraft itself drifts → recovery re-converges. That's the HILS purpose of this whole build.

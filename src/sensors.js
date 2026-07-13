@@ -5,10 +5,11 @@
 
 import { gaussianNext } from './prng.js';
 import { eulerFromQuat, headingDeg } from './telemetry.js';
+import { airData } from './physics.js';
 
-export const SENSORS = ['gyro', 'accel', 'mag', 'baro', 'gps'];
-// MAV_SYS_STATUS_SENSOR bits QGC colors in its health panel.
-export const SENSOR_BITS = { gyro: 1, accel: 2, mag: 4, baro: 8, gps: 32 };
+export const SENSORS = ['gyro', 'accel', 'mag', 'baro', 'pitot', 'gps'];
+// MAV_SYS_STATUS_SENSOR bits QGC colors in its health panel (pitot = diff pressure).
+export const SENSOR_BITS = { gyro: 1, accel: 2, mag: 4, baro: 8, pitot: 16, gps: 32 };
 export const SENSORS_PRESENT = Object.values(SENSOR_BITS).reduce((a, b) => a | b, 0);
 export const FAULT_TYPES = ['freeze', 'dropout', 'bias'];
 
@@ -35,9 +36,9 @@ export function healthBits(faults) {
   return health >>> 0;
 }
 
-// One sensor sweep. (sensors, state, P) → { sensors, readings }. Noise sigmas come
-// from the shared param table; a faulted sensor freezes, drops out, or biases.
-export function stepSensors(sensors, state, P) {
+// One sensor sweep. (sensors, state, P, wind) → { sensors, readings }. Noise sigmas
+// come from the shared param table; a faulted sensor freezes, drops out, or biases.
+export function stepSensors(sensors, state, P, wind = [0, 0, 0]) {
   let rng = sensors.rng;
   const draw = (sigma) => {
     const [g, next] = gaussianNext(rng);
@@ -67,6 +68,7 @@ export function stepSensors(sensors, state, P) {
   const readings = {
     gps: sample('gps', [state.pos[0], state.pos[2], state.pos[1]], P.SNS_GPS_SGM_M, 50),
     baro: sample('baro', [state.pos[1]], P.SNS_BARO_SGM_M, 30),
+    pitot: sample('pitot', [airData(state.quat, state.vel, wind).Va], P.SNS_PIT_SGM_MS, 8),
     gyro: sample('gyro', state.omega, P.SNS_GYRO_SGM_R, 0.2),
     accel: sample('accel', [0, -9.81, 0], P.SNS_ACC_SGM_MS2, 2), // gravity ref (M6 refines)
     mag: sample('mag', [headingDeg(e.yaw)], 0.5, 45),

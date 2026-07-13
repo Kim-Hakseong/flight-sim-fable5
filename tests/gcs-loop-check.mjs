@@ -233,7 +233,7 @@ try {
   received.delete('SYS_STATUS');
   await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ...frame, health: 47 & ~32, faults: { gps: 'bias' }, gpsFix: 3, gpsSats: 12 }),
+    body: JSON.stringify({ ...frame, health: 63 & ~32, faults: { gps: 'bias' }, gpsFix: 3, gpsSats: 12 }),
   });
   let sys = await waitFor('SYS_STATUS');
   check((sys?.fields.onboard_control_sensors_health & 32) === 0, 'SYS_STATUS: GPS health bit drops on fault');
@@ -243,7 +243,7 @@ try {
   received.delete('SYS_STATUS');
   await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ...frame, health: 47, faults: {} }),
+    body: JSON.stringify({ ...frame, health: 63, faults: {} }),
   });
   sys = await waitFor('SYS_STATUS');
   check((sys?.fields.onboard_control_sensors_health & 32) === 32, 'SYS_STATUS: GPS healthy again on clear');

@@ -88,7 +88,7 @@ function sensedFields(trueGeo, state, vehicle) {
     gpsLat: geo.lat, gpsLon: geo.lon, gpsAlt: geo.alt,
     gpsFix: dropout ? 1 : 3, gpsSats: dropout ? 0 : 12,
     baroAlt: (vehicle.baroAlt ?? state.pos[1]) + HOME.alt,
-    health: vehicle.health ?? 47, // SENSORS_PRESENT (gyro|accel|mag|baro|gps)
+    health: vehicle.health ?? 63, // SENSORS_PRESENT (gyro|accel|mag|baro|pitot|gps)
     faults: vehicle.faults ?? {},
   };
 }
