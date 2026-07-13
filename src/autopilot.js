@@ -16,6 +16,7 @@ const DP = defaultParams();
 
 // Must exceed the achievable turn radius (V²/g·tanφ ≈ 160 m at 30 m/s, 30° bank).
 export const LOITER_RADIUS_M = 250;
+export const TAKEOFF_VR_MS = 20; // rotate speed ≈ 1.15·Vstall (17.3 m/s)
 
 // ArduPlane custom_mode numbers — QGC shows these names for autopilot=3.
 export const MODES = { MANUAL: 0, AUTO: 10, RTL: 11, LOITER: 12, TAKEOFF: 13, GUIDED: 15 };
@@ -103,6 +104,20 @@ export function apStep(state, ap, P = DP, va = null) {
       if (state.pos[1] >= ap.targetAlt - 2) {
         next = { ...ap, mode: MODES.GUIDED }; // climb-out done: hold here
         break;
+      }
+      if (state.wow ?? state.pos[1] <= 0.5) {
+        // Ground roll: full power, rudder steers the centerline heading, wings
+        // held level; rotate (elevator up) once the pitot reaches Vr.
+        const e = eulerFromQuat(state.quat);
+        const [p, , r] = toFRD(state.omega);
+        const hdgErr = headingErrorDeg(ap.targetHeading, headingDeg(e.yaw));
+        const speed = va ?? Math.hypot(state.vel[0], state.vel[2]);
+        return out({
+          aileron: clamp(-1.5 * e.roll - 0.2 * p, -1, 1),
+          elevator: speed >= TAKEOFF_VR_MS ? clamp(DE_TRIM - 0.45, -1, 1) : DE_TRIM,
+          rudder: clamp(-0.04 * hdgErr + 0.8 * r, -1, 1),
+          throttle: 1,
+        }, ap);
       }
       return out(holdControls(state, ap.targetAlt, ap.targetHeading, 1, P, va), ap);
     }

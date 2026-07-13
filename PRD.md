@@ -116,6 +116,16 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   *Verify:* converges from a large initial error; absorbs an injected gyro bias;
   bounded error through turns; full mission completes on 100% estimated state.
 
+- **M13 — Ground-roll takeoff.** Real vehicle lifecycle from the runway: the sim
+  boots DISARMED at the threshold (like a real vehicle; the old airborne boot
+  stays available as a test fixture). Ground model: rolling resistance, auto-brake
+  at idle throttle, gear "springs" that hold roll/pitch level at rest while leaving
+  pitch free for rotation; prop static thrust capped to a realistic value. TAKEOFF
+  gains a ground-roll phase — full throttle, rudder centerline steering, rotate at
+  Vr (pitot) — then the existing climb-out. KeyT = arm + auto-takeoff.
+  *Verify:* closed-loop (fully estimated state) arm → ground roll → rotate →
+  climb-out → GUIDED, holding the centerline; brake rollout stops the aircraft.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

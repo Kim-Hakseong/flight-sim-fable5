@@ -3,7 +3,7 @@
 // Wiring + the deterministic fixed-step loop. All sim time comes from DT-sized steps;
 // wall clock only decides HOW MANY steps to run — never feeds the physics.
 
-import { stepAircraft, initialState } from './physics.js';
+import { stepAircraft, groundState } from './physics.js';
 import { startTelemetry, telemetryFrom, eulerFromQuat, headingDeg } from './telemetry.js';
 import { MODES, MODE_NAMES, apStep, manualControls } from './autopilot.js';
 import { startMissionLink } from './missionLink.js';
@@ -25,13 +25,14 @@ const DT = 1 / 60; // s — fixed physics timestep
 const THROTTLE_RATE = 0.5; // full-range throttle travel per second (dt-integrated)
 
 // --- Sim state -------------------------------------------------------------
-let state = initialState();
-let throttle = 0.65; // pilot's throttle setting (MANUAL mode)
+let state = groundState();
+let throttle = 0; // pilot's throttle setting (MANUAL mode)
 let simTime = 0;
 let manual = false; // once __advance is used, wall-clock stepping stops (test/HILS mode)
 
 // The sim is authoritative for arm/mode; the GCS only requests changes.
-let armed = true; // boots armed + airborne so the standalone sim flies immediately
+// Boots DISARMED at the runway threshold, like a real vehicle (KeyT: arm + takeoff).
+let armed = false;
 let ap = {
   mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0,
   guided: null, mission: null,
@@ -92,6 +93,7 @@ window.addEventListener('keydown', (e) => {
   // e.code (physical key), never e.key — IME layouts report e.key as 'Process'.
   keys.add(e.code);
   if (e.code === 'KeyR') reset();
+  if (e.code === 'KeyT') applyCommand({ type: 'takeoff', alt: 60 });
   if (e.code.startsWith('Arrow')) e.preventDefault();
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
@@ -150,10 +152,10 @@ function stepSim(dt) {
 }
 
 function reset() {
-  state = initialState();
-  throttle = 0.65;
+  state = groundState();
+  throttle = 0;
   simTime = 0;
-  armed = true;
+  armed = false;
   ap = {
     mode: MODES.MANUAL, landing: false, targetAlt: 120, targetHeading: 0,
     guided: null, mission: null,

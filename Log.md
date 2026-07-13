@@ -266,3 +266,19 @@
 - Candidates: ground-roll takeoff from the runway, QGC visual pass, EKF_STATUS attitude flag from lpErr.
 **Notes**:
 - Fault demos now cover all 6 sensors end-to-end: gyro bias → transient wobble then absorbed; mag bias 30° → the aircraft actually flies 30° off heading; gyro dropout → SAS goes blind + attitude coasts on accel/mag.
+
+## 2026-07-13 — M13: ground-roll takeoff
+
+**Status**: GREEN
+**Files changed**: PRD.md, src/physics.js (ground model, thrust cap, groundState), src/autopilot.js (ground-roll phase), src/main.js (ground boot, KeyT), index.html, tests/takeoff.test.mjs (new), tests/nav-loop.test.mjs
+**Tests**: unit 75/75 · console 0 ✓ · gcs PASS · determinism ✓ · screenshot ✓ (parked on the runway)
+**Decisions**:
+- Ground model: rolling resistance μ=0.03 + auto-brake μ=0.22 at idle throttle; gear "springs" hold roll level and stop the nose digging in, while pitch stays aero-controllable for rotation. Rest state is exactly still (unit-tested).
+- Prop static thrust capped at 60 N (B&M model gives ~320 N ⇒ T/W 2.4, silly for a ground roll); cruise/climb unaffected (needs ~11 N).
+- TAKEOFF ground phase: full power, rudder centerline steering, wings level, rotate at Vr=20 m/s (pitot) → existing climb-out. Measured: liftoff after 73 m / 6.1 s, centerline dev 0.0 m, brake rollout 63 m.
+- Sim now BOOTS DISARMED at the runway threshold (real vehicle lifecycle; supersedes M2's airborne-armed boot). KeyT = arm + auto-takeoff for keyboard users; `initialState()` (airborne trim) remains the test fixture.
+- Full-stack gate: cold ground takeoff on 100% estimated state (nav-loop test).
+**Next**:
+- Candidates: QGC visual pass (needs local bridge + QGC), EKF_STATUS attitude flag, mission-item takeoff/land at specified runway points.
+**Notes**:
+- Real-vehicle GCS flow now works end to end: QGC ARM → TAKEOFF command → ground roll → rotate → climb → GUIDED/mission → RTL → land → WoW disarm.

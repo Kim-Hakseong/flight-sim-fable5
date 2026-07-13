@@ -3,7 +3,7 @@
 // and the weight-on-wheels discrete.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stepAircraft, initialState } from '../src/physics.js';
+import { stepAircraft, initialState, groundState } from '../src/physics.js';
 import { MODES, apStep } from '../src/autopilot.js';
 import { createSensors, stepSensors, injectFault, clearFault } from '../src/sensors.js';
 import {
@@ -109,6 +109,23 @@ test('estimated nav: RTL lands and disarms on the WoW discrete', () => {
   }
   assert.ok(disarmed, 'disarmed after touchdown');
   assert.equal(L.state.pos[1], 0, 'actually on the ground (truth)');
+});
+
+test('estimated nav: cold ground takeoff — the whole real-vehicle flow', () => {
+  const L = createLoop();
+  L.state = groundState();
+  L.est = createEstimator(L.state);
+  L.att = createAttEstimator(L.state);
+  let ap = { mode: MODES.TAKEOFF, landing: false, targetAlt: 60, targetHeading: 0, guided: null, mission: null };
+  let lifted = false;
+  for (let i = 0; i < 120 * 60; i++) {
+    const r = stepLoop(L, ap);
+    ap = r.ap;
+    if (L.state.pos[1] > 1) lifted = true;
+  }
+  assert.ok(lifted, 'never left the ground');
+  assert.equal(ap.mode, MODES.GUIDED, 'climb-out completed on estimated state');
+  assert.ok(Math.abs(L.state.pos[1] - 60) < 20, `alt ${L.state.pos[1]}`);
 });
 
 test('determinism: the full closed loop is bit-identical across reruns', () => {

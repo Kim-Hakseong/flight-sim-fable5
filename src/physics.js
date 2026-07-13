@@ -23,8 +23,11 @@ export const AC = {
   CYb: -0.98, CYdr: 0.19,
   Clb: -0.12, Clp: -0.26, Clr: 0.14, Clda: 0.13, Cldr: 0.008,
   Cnb: 0.25, Cnp: 0.022, Cnr: -0.35, Cnda: -0.011, Cndr: -0.069,
-  // propulsion (T = ½ρ·Sprop·Cprop·((kMotor·δt)² − Va²))
-  sProp: 0.2027, cProp: 1.0, kMotor: 50,
+  // propulsion (T = ½ρ·Sprop·Cprop·((kMotor·δt)² − Va²)); the B&M model wildly
+  // overestimates static thrust (~320 N ⇒ T/W 2.4), so cap it to a sane value.
+  sProp: 0.2027, cProp: 1.0, kMotor: 50, maxThrustN: 60,
+  // ground handling
+  muRoll: 0.03, muBrake: 0.22, // rolling resistance; auto-brake at idle throttle
   // actuators
   maxDef: 0.44, actTau: 0.05, thrTau: 0.4, // ±25°, surface lag s, throttle lag s
   alphaClamp: 0.30, // rad — lift stops growing past ~17° (crude, bounded stall)
@@ -112,8 +115,10 @@ export function forcesMoments(quat, vel, omega, act, altM, wind = [0, 0, 0]) {
   const drag = qbar * A.S * CD;
   const fy = qbar * A.S * (A.CYb * beta + A.CYdr * act.dr);
 
-  const thrust = 0.5 * airDensity(altM) * A.sProp * A.cProp *
-    ((A.kMotor * act.dt) ** 2 - Va * Va);
+  const thrust = Math.min(
+    A.maxThrustN,
+    0.5 * airDensity(altM) * A.sProp * A.cProp * ((A.kMotor * act.dt) ** 2 - Va * Va)
+  );
 
   const ca = Math.cos(alpha), sa = Math.sin(alpha);
   const gBody = toFRD(quatRotate(quatConjugate(quat), [0, -A.mass * G, 0]));
@@ -177,16 +182,39 @@ export function stepAircraft(state, cmds, dt, wind = [0, 0, 0]) {
   const quat = quatIntegrate(state.quat, omega, dt);
 
   if (pos[1] <= 0) {
-    // Crude ground: clamp, kill sink, roll friction, damp rotation.
     pos[1] = 0;
     vel[1] = Math.max(0, vel[1]);
-    const fr = Math.max(0, 1 - 1.2 * dt);
-    vel[0] *= fr;
-    vel[2] *= fr;
-    const dw = Math.max(0, 1 - 4 * dt);
-    omega = [omega[0] * dw, omega[1] * dw, omega[2] * dw];
+    // Rolling resistance, plus auto-brake once the throttle is at idle.
+    const gs = Math.hypot(vel[0], vel[2]);
+    if (gs > 0) {
+      const mu = AC.muRoll + (act.dt < 0.1 ? AC.muBrake : 0);
+      const dec = Math.min(gs, mu * G * dt);
+      vel[0] -= (vel[0] / gs) * dec;
+      vel[2] -= (vel[2] / gs) * dec;
+    }
+    // Gear: springs hold roll/pitch level at rest, yaw is damped by the tires —
+    // but pitch stays aero-controllable so the elevator can rotate at Vr.
+    const [p, q, r] = toFRD(omega);
+    const right = quatRotate(quat, [1, 0, 0]);
+    const nose = quatRotate(quat, [0, 0, -1]);
+    const roll = Math.asin(Math.max(-1, Math.min(1, -right[1])));
+    const pitch = Math.asin(Math.max(-1, Math.min(1, nose[1])));
+    const pNew = p * (1 - Math.min(6 * dt, 1)) - roll * 4 * dt;
+    const qNew = pitch < -0.02 ? Math.max(q, 0) : q; // nose can't dig through the ground
+    omega = fromFRD([pNew, qNew, r * (1 - Math.min(1.5 * dt, 1))]);
   }
   return { pos, vel, quat, omega, act };
+}
+
+// At the runway threshold (south end, z = +350), level, pointing north, cold.
+export function groundState() {
+  return {
+    pos: [0, 0, 350],
+    vel: [0, 0, 0],
+    quat: [0, 0, 0, 1],
+    omega: [0, 0, 0],
+    act: { da: 0, de: 0, dr: 0, dt: 0 },
+  };
 }
 
 // Boot near the level-flight trim at Va ≈ 30 m/s: nose above the (horizontal)
