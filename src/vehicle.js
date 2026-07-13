@@ -39,6 +39,7 @@ export function createVehicle({ boot = 'ground', sensorSeed = 1, windSeed = 2, p
     windWorld: [0, 0, 0],
     lastControls: { aileron: 0, elevator: 0, rudder: 0, throttle: 0 },
     lastReached: -1,
+    servoFaults: {}, // channel (da/de/dr/dt) → {type: jam|floating|slow, factor?}
   };
 }
 
@@ -98,6 +99,17 @@ export function vehicleClearFault(v, sensor) {
   return { ...v, sensors: clearFault(v.sensors, sensor) };
 }
 
+export function vehicleServoFault(v, channel, type, opts = {}) {
+  if (!['da', 'de', 'dr', 'dt'].includes(channel)) return v;
+  if (!['jam', 'floating', 'slow'].includes(type)) return v;
+  return { ...v, servoFaults: { ...v.servoFaults, [channel]: { type, ...opts } } };
+}
+export function vehicleClearServoFault(v, channel) {
+  const servoFaults = { ...v.servoFaults };
+  delete servoFaults[channel];
+  return { ...v, servoFaults };
+}
+
 // One fixed step. stick drives MANUAL mode only (null = hands off).
 export function vehicleStep(v, dt, stick = null) {
   // Control path sees ONLY estimated state (+ the WoW discrete).
@@ -123,7 +135,7 @@ export function vehicleStep(v, dt, stick = null) {
   if (!armed) controls = { ...controls, throttle: 0 }; // DISARM cuts the engine
 
   const w = stepWind(v.wind, v.state, v.params, dt);
-  const state = stepAircraft(v.state, controls, dt, w.windWorld);
+  const state = stepAircraft(v.state, controls, dt, w.windWorld, v.servoFaults);
   const sw = stepSensors(v.sensors, state, v.params, w.windWorld);
   return {
     ...v,
@@ -146,7 +158,12 @@ export function vehicleTelemetry(v) {
     missionSeq: v.ap.mission ? Math.min(v.ap.mission.idx, v.ap.mission.targets.length - 1) : -1,
     missionReached: v.lastReached,
     gps: v.lastGps, gpsDropout: v.readings ? !v.readings.gps : false,
-    baroAlt: v.readings?.baro?.[0], health: v.readings?.health, faults: v.readings?.faults,
+    baroAlt: v.readings?.baro?.[0], health: v.readings?.health,
+    // Servo faults ride the same edge-driven STATUSTEXT channel as sensor faults.
+    faults: {
+      ...v.readings?.faults,
+      ...Object.fromEntries(Object.entries(v.servoFaults).map(([ch, f]) => [`servo_${ch}`, f.type])),
+    },
     est: v.est, ekf: ekfReport(v.est, v.readings),
     va: v.readings?.pitot?.[0] ?? undefined,
     attQuat: v.att.quat,

@@ -5,7 +5,8 @@
 // HILS runner). Wall clock only decides HOW MANY fixed steps run — never physics.
 
 import {
-  createVehicle, vehicleStep, vehicleCommand, vehicleFault, vehicleClearFault, vehicleTelemetry,
+  createVehicle, vehicleStep, vehicleCommand, vehicleFault, vehicleClearFault,
+  vehicleServoFault, vehicleClearServoFault, vehicleTelemetry,
 } from './vehicle.js';
 import { MODES, MODE_NAMES } from './autopilot.js';
 import { airData } from './physics.js';
@@ -77,6 +78,8 @@ window.__state = () => JSON.stringify({ throttle, ...veh });
 window.__command = (cmd) => applyCommand(cmd); // same path the GCS uses
 window.injectFault = (sensor, type, opts) => { veh = vehicleFault(veh, sensor, type, opts); };
 window.clearFault = (sensor) => { veh = vehicleClearFault(veh, sensor); };
+window.injectServoFault = (ch, type, opts) => { veh = vehicleServoFault(veh, ch, type, opts); };
+window.clearServoFault = (ch) => { veh = vehicleClearServoFault(veh, ch); };
 // Scenario bench: __hils.list() / __hils.run('name' | {custom scenario}).
 // Runs on a FRESH vehicle — the live sim is untouched.
 window.__hils = {
@@ -108,12 +111,15 @@ const eng = createEngineering({
     return {
       state: veh.state, est: veh.est, att: veh.att, windWorld: veh.windWorld,
       va: ad.Va, alpha: ad.alpha, beta: ad.beta,
-      faults: veh.readings?.faults ?? {}, ekf: ekfReport(veh.est, veh.readings),
+      faults: veh.readings?.faults ?? {}, servoFaults: veh.servoFaults,
+      ekf: ekfReport(veh.est, veh.readings),
       batt: batteryOutputs(veh.battery, veh.state.act.dt),
     };
   },
   injectFault: (s, t) => window.injectFault(s, t),
   clearFault: (s) => window.clearFault(s),
+  injectServoFault: (ch, t) => window.injectServoFault(ch, t),
+  clearServoFault: (ch) => window.clearServoFault(ch),
 });
 window.__eng = eng; // DOM-gate hook for the browser check
 

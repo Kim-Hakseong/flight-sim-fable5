@@ -50,9 +50,11 @@ export function holdControls(state, targetAlt, targetHeading, throttleOverride =
   const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
   const bankT = clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
   const aileron = clamp(P.AP_ROLL_KP * (bankT - e.roll) - P.AP_ROLL_KD * p, -1, 1);
-  // Coordinated turn: track the turn's kinematic yaw rate, damp the rest.
+  // Coordinated turn: track the turn's kinematic yaw rate, damp the rest — plus a
+  // rudder roll-assist through the dihedral (yaw→β→Clβ) path. The assist is what
+  // keeps the aircraft controllable when the aileron servo is jammed/floating.
   const rCmd = (G / V) * Math.tan(e.roll);
-  const rudder = clamp(-P.AP_YAW_KD * (rCmd - r), -1, 1);
+  const rudder = clamp(-P.AP_YAW_KD * (rCmd - r) - P.AP_RUD_ROLL * (bankT - e.roll), -1, 1);
 
   const climbT = clamp((targetAlt - state.pos[1]) * P.AP_ALT_P, -P.AP_SINK_MAX, P.AP_CLIMB_MAX);
   // Pitch target: flight-path feedforward (γ ≈ climb/Va) + trim AoA + rate feedback.

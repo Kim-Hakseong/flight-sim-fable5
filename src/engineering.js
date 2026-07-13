@@ -31,7 +31,9 @@ function fmtVec(v, d = 1) {
   return v.map((x) => x.toFixed(d).padStart(7)).join(' ');
 }
 
-export function createEngineering({ getData, injectFault, clearFault }) {
+const SERVOS = ['da', 'de', 'dr', 'dt'];
+
+export function createEngineering({ getData, injectFault, clearFault, injectServoFault, clearServoFault }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -41,9 +43,12 @@ export function createEngineering({ getData, injectFault, clearFault }) {
   document.body.appendChild(panel);
 
   const sections = {};
-  for (const id of ['state', 'nav', 'sensors', 'env']) {
+  for (const id of ['state', 'nav', 'sensors', 'servos', 'env']) {
     const h = document.createElement('h3');
-    h.textContent = { state: 'STATE VECTOR', nav: 'NAV / ESTIMATOR', sensors: 'SENSOR BENCH', env: 'ENV / BATTERY' }[id];
+    h.textContent = {
+      state: 'STATE VECTOR', nav: 'NAV / ESTIMATOR', sensors: 'SENSOR BENCH',
+      servos: 'SERVO BENCH', env: 'ENV / BATTERY',
+    }[id];
     const pre = document.createElement('pre');
     panel.appendChild(h);
     panel.appendChild(pre);
@@ -69,6 +74,28 @@ export function createEngineering({ getData, injectFault, clearFault }) {
     clr.onclick = () => clearFault(s);
     row.appendChild(clr);
     bench.appendChild(row);
+  }
+
+  // Servo fault bench under the servo section.
+  const servoBench = document.createElement('div');
+  servoBench.className = 'flt';
+  sections.servos.after(servoBench);
+  for (const ch of SERVOS) {
+    const row = document.createElement('div');
+    const label = document.createElement('span');
+    label.textContent = ch.padEnd(6);
+    row.appendChild(label);
+    for (const t of ['jam', 'floating', 'slow']) {
+      const b = document.createElement('button');
+      b.textContent = t.slice(0, 4);
+      b.onclick = () => injectServoFault(ch, t);
+      row.appendChild(b);
+    }
+    const clr = document.createElement('button');
+    clr.textContent = 'clear';
+    clr.onclick = () => clearServoFault(ch);
+    row.appendChild(clr);
+    servoBench.appendChild(row);
   }
 
   const chartsH = document.createElement('h3');
@@ -150,6 +177,12 @@ export function createEngineering({ getData, injectFault, clearFault }) {
         .join('\n');
       bench.querySelectorAll('div').forEach((row, i) => {
         row.querySelector('span').className = d.faults[SENSORS[i]] ? 'bad' : '';
+      });
+      sections.servos.textContent = SERVOS
+        .map((ch) => `${ch.padEnd(6)} ${d.servoFaults?.[ch] ? `FAULT:${d.servoFaults[ch].type}` : 'ok'}`)
+        .join('\n');
+      servoBench.querySelectorAll('div').forEach((row, i) => {
+        row.querySelector('span').className = d.servoFaults?.[SERVOS[i]] ? 'bad' : '';
       });
       sections.env.textContent =
         `wind ${fmtVec(d.windWorld)} m/s\nbatt ${(d.batt.battMv / 1000).toFixed(2)} V  ` +

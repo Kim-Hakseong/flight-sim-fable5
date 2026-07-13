@@ -310,3 +310,17 @@
 - **M16 — actuator faults** (servo jam/floating/slow).
 **Notes**:
 - CI's browser step uses the runner's preinstalled Chrome via CHROME_BIN.
+
+## 2026-07-13 — M16: actuator faults + rudder roll-assist
+
+**Status**: GREEN
+**Files changed**: src/physics.js (stepActuators faults), src/vehicle.js, src/autopilot.js (AP_RUD_ROLL), src/params.js, src/hils.js (2 servo scenarios), src/main.js, src/engineering.js (servo bench), tests/servo.test.mjs (new)
+**Tests**: unit 85/85 · console 0 ✓ · gcs PASS · HILS bench 7/7 · determinism ✓ · CI green on GitHub (all steps incl. headless-Chrome gate)
+**Decisions**:
+- Servo faults per channel (δa/δe/δr/δt): jam (hold position), floating (streams to aero-neutral; throttle dies), slow (τ × factor). Threaded physics→vehicle→console bench→STATUSTEXT (servo_da etc. on the same edge channel)→HILS events.
+- Found via the bench: an aileron jammed at +1.3° (mid-turbulence-correction) is UNRECOVERABLE with the old AP — constant roll moment, spiral in 10 s. Real failure mode, real fix: rudder roll-assist through the dihedral path (yaw→β→Clβ), gain AP_RUD_ROLL=0.35 (QGC-tunable). Same jam now holds ≤16° roll and full altitude; assist also mildly helps normal turns.
+- New scenarios: elevator-slow-survivable, aileron-jam-at-trim (both PASS with the assist).
+**Next**:
+- A→B→D done. Remaining candidates: wind estimation, QGC virtual joystick, MAVLink v2, sim-as-plant external FC interface.
+**Notes**:
+- The bench earned its keep on day one: it exposed a genuine unrecoverable failure mode and validated the control-law fix, all deterministic and CI-gated.

@@ -11,6 +11,7 @@
 
 import {
   createVehicle, vehicleStep, vehicleCommand, vehicleFault, vehicleClearFault,
+  vehicleServoFault, vehicleClearServoFault,
 } from './vehicle.js';
 import { eulerFromQuat, headingDeg, HOME } from './telemetry.js';
 import { airData } from './physics.js';
@@ -70,6 +71,8 @@ export function runScenario(sc) {
       if (ev.command) v = vehicleCommand(v, ev.command);
       if (ev.fault) v = vehicleFault(v, ev.fault.sensor, ev.fault.type, ev.fault);
       if (ev.clear) v = vehicleClearFault(v, ev.clear);
+      if (ev.servo) v = vehicleServoFault(v, ev.servo.ch, ev.servo.type, ev.servo);
+      if (ev.clearServo) v = vehicleClearServoFault(v, ev.clearServo);
     }
     v = vehicleStep(v, DT);
     if (i % 6 === 5) samples.push(sample(v)); // 10 Hz
@@ -136,6 +139,32 @@ export const SCENARIOS = [
       { name: 'altitude band', type: 'band', signal: 'alt', from: 10, to: 120, min: 90, max: 170 },
       { name: 'reaches the point', type: 'reach', signal: 'distHome', max: 2200, by: 120 },
       { name: 'orbit is bounded', type: 'band', signal: 'distHome', from: 80, to: 120, min: 900, max: 2100 },
+    ],
+  },
+  {
+    name: 'elevator-slow-survivable',
+    description: 'Elevator slew degraded 8×: altitude wallows but stays in a safe band.',
+    boot: 'air', duration: 90, seed: 13,
+    events: [
+      GUIDED_HOLD,
+      { t: 10, servo: { ch: 'de', type: 'slow', factor: 8 } },
+    ],
+    checks: [
+      { name: 'altitude safe band', type: 'band', signal: 'alt', from: 10, to: 90, min: 80, max: 170 },
+      { name: 'airspeed safe band', type: 'band', signal: 'va', from: 10, to: 90, min: 22, max: 40 },
+    ],
+  },
+  {
+    name: 'aileron-jam-at-trim',
+    description: 'Aileron jams near neutral in cruise: no roll authority, but no crash.',
+    boot: 'air', duration: 60, seed: 17,
+    events: [
+      GUIDED_HOLD,
+      { t: 10, servo: { ch: 'da', type: 'jam' } },
+    ],
+    checks: [
+      { name: 'no crash', type: 'band', signal: 'alt', from: 10, to: 60, min: 60 },
+      { name: 'airspeed held', type: 'band', signal: 'va', from: 10, to: 60, min: 22, max: 40 },
     ],
   },
   {

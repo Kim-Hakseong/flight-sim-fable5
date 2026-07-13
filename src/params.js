@@ -13,6 +13,7 @@ export const PARAM_DEFS = [
   { id: 'AP_PITCH_KP', def: 3, min: 0.5, max: 10 }, // elevator per rad pitch err
   { id: 'AP_PITCH_KD', def: 0.8, min: 0, max: 3 }, // elevator per rad/s q
   { id: 'AP_YAW_KD', def: 1.0, min: 0, max: 4 }, // rudder per rad/s yaw-rate err
+  { id: 'AP_RUD_ROLL', def: 0.35, min: 0, max: 2 }, // rudder roll-assist (dihedral path)
   { id: 'AP_ALT_P', def: 0.25, min: 0.05, max: 1 }, // m/s climb per m alt err
   { id: 'AP_CLIMB_MAX', def: 5, min: 1, max: 10 }, // m/s
   { id: 'AP_SINK_MAX', def: 3.5, min: 1, max: 8 }, // m/s

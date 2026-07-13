@@ -136,28 +136,35 @@ export function forcesMoments(quat, vel, omega, act, altM, wind = [0, 0, 0]) {
 }
 
 // First-order actuators with deflection limits. cmds: {aileron, elevator, rudder
-// ∈ [−1,1] of max deflection; throttle ∈ [0,1]}.
-export function stepActuators(act, cmds, dt) {
+// ∈ [−1,1] of max deflection; throttle ∈ [0,1]}. faults per channel (da/de/dr/dt):
+//   jam      — servo holds its current position, ignores commands
+//   floating — linkage broken: the surface streams to aero-neutral (throttle dies)
+//   slow     — degraded slew: time constant × factor (default 6)
+export function stepActuators(act, cmds, dt, faults = {}) {
   const clamp = (x, m) => Math.max(-m, Math.min(m, x));
-  const kS = Math.min(dt / AC.actTau, 1);
-  const kT = Math.min(dt / AC.thrTau, 1);
   const target = {
     da: clamp((cmds.aileron ?? 0) * AC.maxDef, AC.maxDef),
     de: clamp((cmds.elevator ?? 0) * AC.maxDef, AC.maxDef),
     dr: clamp((cmds.rudder ?? 0) * AC.maxDef, AC.maxDef),
     dt: Math.max(0, Math.min(1, cmds.throttle ?? 0)),
   };
-  return {
-    da: act.da + (target.da - act.da) * kS,
-    de: act.de + (target.de - act.de) * kS,
-    dr: act.dr + (target.dr - act.dr) * kS,
-    dt: act.dt + (target.dt - act.dt) * kT,
-  };
+  const next = {};
+  for (const ch of ['da', 'de', 'dr', 'dt']) {
+    const f = faults[ch];
+    if (f?.type === 'jam') {
+      next[ch] = act[ch];
+      continue;
+    }
+    const goal = f?.type === 'floating' ? 0 : target[ch];
+    const tau = (ch === 'dt' ? AC.thrTau : AC.actTau) * (f?.type === 'slow' ? f.factor ?? 6 : 1);
+    next[ch] = act[ch] + (goal - act[ch]) * Math.min(dt / tau, 1);
+  }
+  return next;
 }
 
 // One fixed step of the rigid-body state. Pure: returns a fresh state object.
-export function stepAircraft(state, cmds, dt, wind = [0, 0, 0]) {
-  const act = stepActuators(state.act, cmds, dt);
+export function stepAircraft(state, cmds, dt, wind = [0, 0, 0], actFaults = {}) {
+  const act = stepActuators(state.act, cmds, dt, actFaults);
   const { F, M } = forcesMoments(state.quat, state.vel, state.omega, act, state.pos[1], wind);
 
   // Translation in the world frame (F already includes gravity).
