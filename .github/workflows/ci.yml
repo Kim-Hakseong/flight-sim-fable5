@@ -24,7 +24,7 @@ jobs:
       - name: ArduPilot SITL JSON adapter check
         run: node tests/sitl-check.mjs
       - name: Native C core — golden cross-validation + .so build
-        run: make -C native golden nivs spec so
+        run: make -C native golden nivs spec fmu-check so fmu
       - name: Browser gate (headless Chrome, console-0 + determinism + DOM)
         env:
           CHROME_BIN: /usr/bin/google-chrome
@@ -35,4 +35,11 @@ jobs:
         with:
           name: sim-screenshot
           path: tests/artifacts/sim.png
+          if-no-files-found: ignore
+      - name: Upload FMU deliverable
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fdm-uav-fmu
+          path: native/fdm-uav.fmu
           if-no-files-found: ignore

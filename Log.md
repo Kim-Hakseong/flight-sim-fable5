@@ -414,3 +414,16 @@
 - Scaling/calibration/bus protocol stay VeriStand-side per the reference workflow; the model speaks SI only.
 **Next**:
 - Research report lands → strategy doc. Then M25 (FMU 2.0 export) when ready.
+
+## 2026-07-15 — Market research synthesized + M25: FMI 2.0 FMU export (primary delivery)
+
+**Status**: GREEN
+**Files changed**: MARKET.md (new), PRD.md, native/{fmi2_model.c,gen-fmu.mjs,fmi-driver.c,fmi-check.mjs,Makefile,.gitignore}, .github/workflows/ci.yml
+**Tests**: golden ALL PASS · nivs compile-check · spec order-verified · **FMU CHECK PASS** (dlopen'd FMU driven through the real fmi2 ABI matches JS golden: trim 2.27e-13 m, ground-roll 0.0 m) · JS 89/89 · CI green
+**Decisions**:
+- Deep-research finished (2 runs; synthesis skipped on session limit, so synthesized directly from 3-0/2-0 confirmed claims → MARKET.md). Key findings: (a) UAV 6-DOF plant-model demand is real and confirmed (KAIST-한화시스템, KAI papers); (b) the reusable "plant-model catalog" layer is a genuine market gap — incumbents sell rigs/infra, not models; (c) **the original premise was WRONG (3-0 refuted): 리얼타임웨이브 uses its own RTNgine, not NI VeriStand** → don't bind the model to one runtime; (d) **FMU, not a bespoke .so, is VeriStand's official plant-model format (VeriStand 2019+ runs FMI 2.0 co-sim FMUs on PXI Linux RT) and also covers RTNgine/Simulink/SCADE.**
+- So M25 makes FMI 2.0 Co-Simulation FMU the PRIMARY deliverable (.so demoted to secondary). fmi2_model.c wraps fdm.c through the standard fmi2 ABI (self-contained, no FMI SDK headers); gen-fmu.mjs emits modelDescription.xml from channels.json (same source of truth as the VeriStand wrapper + INTERFACE.md) and VERIFIES the C vref enum matches it. DoStep sub-steps to the fixed 1/60 s base rate so RT determinism is caller-independent.
+- fmi-check.mjs is a REAL ABI test: fmi-driver.c dlopen's the built FMU and drives fmi2Instantiate→SetupExperiment→Init→(SetReal/DoStep loop)→GetReal, compared to a JS golden. `make -C native fmu` packages a spec-compliant fdm-uav.fmu; CI builds + uploads it as an artifact.
+- Strategy (MARKET.md §6): first product = golden-VALIDATED small-UAV plant model + auto interface spec + CI traceability (the layer competitors don't productize). Priority customers: (1) HILS integrators (리얼타임웨이브) as an OEM model SUPPLIER via FMU, (2) UAV 체계개발 (KAI/한화시스템) reference-plant channel, (3) ADD/연구기관 independent-verification-model channel.
+**Next**:
+- Optional: FMI 3.0 variant; ADD-checklist doc mapping our CI evidence to DO-331-style traceability; re-verify the §5 unverified market items after limit reset.

@@ -1,2 +1,6 @@
 golden-check
 libfdm.so
+nivs-check.o
+fmi-driver
+fmu-build/
+*.fmu

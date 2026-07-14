@@ -22,11 +22,25 @@ nivs-check.o: nivs_model.c fdm.h ni_stub/ni_modelframework.h
 spec: gen-spec.mjs channels.json
 	node gen-spec.mjs
 
+# FMI 2.0 Co-Simulation FMU (PRIMARY delivery format — see MARKET.md).
+MODEL = fdm-uav
+fmu-so: fmi2_model.c fdm.c fdm.h
+	node gen-fmu.mjs
+	$(CC) $(CFLAGS) -fvisibility=hidden -fPIC -shared \
+	  -o fmu-build/binaries/linux64/$(MODEL).so fmi2_model.c fdm.c $(LDLIBS)
+
+fmu: fmu-so
+	node gen-fmu.mjs --pack
+
+fmu-check: fmu-so
+	node fmi-check.mjs
+
 so: libfdm.so
 libfdm.so: fdm.c fdm.h
 	$(CC) $(CFLAGS) -fPIC -shared -o $@ fdm.c $(LDLIBS)
 
 clean:
-	rm -f golden-check libfdm.so nivs-check.o
+	rm -f golden-check libfdm.so nivs-check.o $(MODEL).fmu
+	rm -rf fmu-build
 
-.PHONY: golden so nivs spec clean
+.PHONY: golden so nivs spec fmu fmu-so fmu-check clean

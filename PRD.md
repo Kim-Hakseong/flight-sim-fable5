@@ -198,6 +198,17 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   *Verify:* `make -C native nivs` compile-checks the wrapper; INTERFACE.md
   regenerates deterministically and matches the wrapper's channel list.
 
+- **M25 — FMI 2.0 FMU export (primary delivery format).** Market research (MARKET.md)
+  found FMU — not a bespoke .so — is NI VeriStand's officially supported plant-model
+  format (VeriStand 2019+ runs FMI 2.0 co-sim FMUs on PXI Linux RT), and it also
+  covers RTNgine/Simulink/SCADE/dSPACE. So the FDM core ships as a Co-Simulation FMU:
+  modelDescription.xml generated from channels.json (same source of truth as the
+  VeriStand wrapper + INTERFACE.md), fmi2 C entry points wrapping fdm.c, packaged
+  as a .fmu zip. .so stays as a secondary VeriStand-native path.
+  *Verify:* `make -C native fmu` builds fdm-uav.fmu; a no-dep node FMI harness
+  loads modelDescription.xml, drives the built .so through fmi2 calls, and matches
+  a JS golden trajectory (turbulence off) within trajectory tolerance.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game
