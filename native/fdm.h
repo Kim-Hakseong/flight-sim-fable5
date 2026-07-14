@@ -69,6 +69,8 @@ void fdm_forces_moments(const fdm_state *s, const double wind_world[3],
 void fdm_air_data(const double quat[4], const double vel[3],
                   const double wind_world[3],
                   double *va, double *alpha, double *beta);
+void fdm_euler(const double quat[4], double *roll, double *pitch, double *yaw);
+void fdm_rates_frd(const double omega[3], double frd_out[3]);
 double fdm_air_density(double alt_m);
 
 #ifdef __cplusplus

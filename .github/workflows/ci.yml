@@ -24,7 +24,7 @@ jobs:
       - name: ArduPilot SITL JSON adapter check
         run: node tests/sitl-check.mjs
       - name: Native C core — golden cross-validation + .so build
-        run: make -C native golden so
+        run: make -C native golden nivs spec so
       - name: Browser gate (headless Chrome, console-0 + determinism + DOM)
         env:
           CHROME_BIN: /usr/bin/google-chrome

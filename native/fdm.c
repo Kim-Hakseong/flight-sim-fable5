@@ -287,6 +287,23 @@ void fdm_step(fdm_state *s, const fdm_cmds *c, const fdm_faults *f,
   }
 }
 
+/* Aerospace euler from the attitude quat (mirrors src/telemetry.js). */
+void fdm_euler(const double quat[4], double *roll, double *pitch, double *yaw) {
+  double fwd[3], up[3], right[3];
+  double ez[3] = {0, 0, -1}, ey[3] = {0, 1, 0}, ex[3] = {1, 0, 0};
+  quat_rotate(quat, ez, fwd);
+  quat_rotate(quat, ey, up);
+  quat_rotate(quat, ex, right);
+  *roll = atan2(-right[1], up[1]);
+  double sp = fwd[1] < -1.0 ? -1.0 : (fwd[1] > 1.0 ? 1.0 : fwd[1]);
+  *pitch = asin(sp);
+  *yaw = atan2(fwd[0], -fwd[2]);
+}
+
+void fdm_rates_frd(const double omega[3], double frd_out[3]) {
+  to_frd(omega, frd_out);
+}
+
 /* --- Boot states ---------------------------------------------------------------- */
 void fdm_ground_state(fdm_state *s) {
   memset(s, 0, sizeof(*s));

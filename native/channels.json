@@ -1,0 +1,41 @@
+{
+  "model": "fdm-uav",
+  "description": "Aerosonde-class small-UAV integrated plant model (6-DOF + actuators + Dryden environment), golden-validated against the JS reference simulator.",
+  "base_rate_hz": 60,
+  "inports": [
+    { "name": "Cmd_Aileron", "unit": "-", "min": -1, "max": 1, "desc": "aileron command, fraction of ±25.2 deg" },
+    { "name": "Cmd_Elevator", "unit": "-", "min": -1, "max": 1, "desc": "elevator command (+ = trailing edge down = nose down)" },
+    { "name": "Cmd_Rudder", "unit": "-", "min": -1, "max": 1, "desc": "rudder command (− = nose right)" },
+    { "name": "Cmd_Throttle", "unit": "-", "min": 0, "max": 1, "desc": "throttle command" },
+    { "name": "Env_WindN", "unit": "m/s", "min": -20, "max": 20, "desc": "steady wind TO north" },
+    { "name": "Env_WindE", "unit": "m/s", "min": -20, "max": 20, "desc": "steady wind TO east" },
+    { "name": "Env_Turb", "unit": "-", "min": 0, "max": 3, "desc": "Dryden intensity scale (0 = calm)" },
+    { "name": "Flt_Aileron", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
+    { "name": "Flt_Elevator", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
+    { "name": "Flt_Rudder", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
+    { "name": "Flt_Throttle", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
+    { "name": "Sim_Reset", "unit": "bool", "min": 0, "max": 2, "desc": "rising >0.5 re-initializes; 1 = ground boot, 2 = airborne trim" }
+  ],
+  "outports": [
+    { "name": "Pos_N", "unit": "m", "desc": "position north of home" },
+    { "name": "Pos_E", "unit": "m", "desc": "position east of home" },
+    { "name": "Pos_D", "unit": "m", "desc": "position down (negative = altitude)" },
+    { "name": "Vel_N", "unit": "m/s", "desc": "ground velocity north" },
+    { "name": "Vel_E", "unit": "m/s", "desc": "ground velocity east" },
+    { "name": "Vel_D", "unit": "m/s", "desc": "ground velocity down" },
+    { "name": "Att_Roll", "unit": "rad", "desc": "roll, right +" },
+    { "name": "Att_Pitch", "unit": "rad", "desc": "pitch, up +" },
+    { "name": "Att_Yaw", "unit": "rad", "desc": "yaw, 0 = north, east +" },
+    { "name": "Rate_P", "unit": "rad/s", "desc": "body roll rate (FRD)" },
+    { "name": "Rate_Q", "unit": "rad/s", "desc": "body pitch rate (FRD)" },
+    { "name": "Rate_R", "unit": "rad/s", "desc": "body yaw rate (FRD)" },
+    { "name": "Air_Va", "unit": "m/s", "desc": "true airspeed" },
+    { "name": "Air_Alpha", "unit": "rad", "desc": "angle of attack" },
+    { "name": "Air_Beta", "unit": "rad", "desc": "sideslip" },
+    { "name": "Act_Aileron", "unit": "rad", "desc": "actual aileron deflection" },
+    { "name": "Act_Elevator", "unit": "rad", "desc": "actual elevator deflection" },
+    { "name": "Act_Rudder", "unit": "rad", "desc": "actual rudder deflection" },
+    { "name": "Act_Throttle", "unit": "-", "desc": "actual throttle" },
+    { "name": "WoW", "unit": "bool", "desc": "weight on wheels discrete" }
+  ]
+}

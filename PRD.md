@@ -188,6 +188,16 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   bounded trajectory drift) — built and gated in CI.
   *Verify:* `make -C native golden` passes; `make -C native so` builds the .so.
 
+- **M24 — VeriStand model wrapper + interface spec.** Wrap the C core in the NI
+  VeriStand Model Framework shape (USER_Initialize/USER_TakeOneStep; Inports =
+  surfaces + environment + fault switches, Outports = NED state/air data/actuators/
+  WoW) compiled against a local stub of ni_modelframework.h for CI; swap NI's real
+  SDK header on the customer toolchain. Auto-generate the model interface
+  specification (diagram + signal tables, 참고자료 PDF 양식 준거) from one source
+  of truth shared with the wrapper.
+  *Verify:* `make -C native nivs` compile-checks the wrapper; INTERFACE.md
+  regenerates deterministically and matches the wrapper's channel list.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

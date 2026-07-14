@@ -401,3 +401,16 @@
 - Market research (defense HILS model demand, per user's product focus) launched as a background deep-research workflow.
 **Next**:
 - M24: NI VeriStand Model Framework wrapper (Inports/Outports/Parameters from the shared table) + interface-spec autogen (참고자료 PDF 양식 준거). Research report → strategy doc.
+
+## 2026-07-14 — M24: VeriStand model wrapper + interface spec autogen
+
+**Status**: GREEN (market-research re-verification still running in background)
+**Files changed**: PRD.md, native/{channels.json,nivs_model.c,ni_stub/ni_modelframework.h,gen-spec.mjs,INTERFACE.md,Makefile,fdm.h,fdm.c(+euler/rates helpers)}, .github/workflows/ci.yml
+**Tests**: golden ALL PASS · `make nivs` compile-check (−Wall −Wextra −Werror) · spec generator verifies wrapper struct order against channels.json (fails the build on drift) · JS suite unaffected
+**Decisions**:
+- channels.json is the ONE source of truth: the NIVS wrapper structs must match it field-for-field (gen-spec.mjs gates this), and INTERFACE.md (참고자료 PDF 양식: 구성도 + 신호 테이블, 한글) regenerates from it.
+- Channel map: Cmd_* 4ch + Env_* 3ch(wind/turb) + Flt_* 4ch(servo fault enums — HILS 벤치 셀링포인트를 Inport 스위치로) + Sim_Reset(라이징 에지, 1=지상/2=공중트림); Outports 20ch (NED pos/vel, euler, FRD rates, air data, actuator truth, WoW).
+- ni_stub/ carries a minimal typed stub of ni_modelframework.h for CI honesty; deployment builds against NI's real SDK sources (command documented in the wrapper header).
+- Scaling/calibration/bus protocol stay VeriStand-side per the reference workflow; the model speaks SI only.
+**Next**:
+- Research report lands → strategy doc. Then M25 (FMU 2.0 export) when ready.
