@@ -179,6 +179,15 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   gradient sky dome, warm key light). RENDER-ONLY: the flight model stays the
   validated small-UAV dynamics; a true F-16 flight model is future work.
 
+- **M23 — Portable C99 flight-dynamics core (the "yolk").** Port the validated
+  plant (rigid-body 6-DOF, actuators+faults, ISA, Dryden wind, ground model) to a
+  single dependency-free C99 file (`native/fdm.c`) — the deployable asset for
+  NI VeriStand (Linux RT .so), FMU, and any RT target. The JS sim is the REFERENCE:
+  a generator emits golden vectors (point-wise forces/moments + full trajectories,
+  turbulence on) and a C harness must reproduce them (tight point tolerances,
+  bounded trajectory drift) — built and gated in CI.
+  *Verify:* `make -C native golden` passes; `make -C native so` builds the .so.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game
