@@ -13,17 +13,21 @@ export const COMPAT_PARAMS = new Map(Object.entries({
   // Flight-mode slots (ArduPlane numbering; we honor SET_MODE anyway)
   // (mode 13=TAKEOFF shows as 'unknown' on older QGC mode lists → slot 6 stays Manual)
   FLTMODE1: 0, FLTMODE2: 10, FLTMODE3: 15, FLTMODE4: 11, FLTMODE5: 12, FLTMODE6: 0,
-  // Compass/INS identity + calibration (0 = none/uncalibrated is fine for a sim)
-  COMPASS_DEV_ID: 1, COMPASS_DEV_ID2: 0, COMPASS_DEV_ID3: 0,
-  COMPASS_OFS_X: 0, COMPASS_OFS_Y: 0, COMPASS_OFS_Z: 0,
+  // Compass/INS identity + calibration. QGC flags a sensor "needs setup" when its
+  // offsets are all zero — report plausible NONZERO calibration values so the
+  // sim presents as a calibrated vehicle (values are cosmetic; the sim's own
+  // sensor model lives in src/sensors.js).
+  COMPASS_DEV_ID: 97539, COMPASS_DEV_ID2: 0, COMPASS_DEV_ID3: 0,
+  COMPASS_OFS_X: 12.5, COMPASS_OFS_Y: -8.3, COMPASS_OFS_Z: 21.7,
   COMPASS_OFS2_X: 0, COMPASS_OFS2_Y: 0, COMPASS_OFS2_Z: 0,
   COMPASS_OFS3_X: 0, COMPASS_OFS3_Y: 0, COMPASS_OFS3_Z: 0,
-  COMPASS_DEC: 0,
+  COMPASS_DEC: 0.1466,
   // QGC queries these lazily after the first batch — cover the compass family
   COMPASS_USE: 1, COMPASS_USE2: 0, COMPASS_USE3: 0,
   COMPASS_EXTERNAL: 0, COMPASS_ORIENT: 0, COMPASS_AUTODEC: 1, COMPASS_LEARN: 0,
   INS_GYROFFS_X: 0, INS_GYROFFS_Y: 0, INS_GYROFFS_Z: 0,
-  INS_ACCOFFS_X: 0, INS_ACCOFFS_Y: 0, INS_ACCOFFS_Z: 0,
+  INS_ACCOFFS_X: 0.021, INS_ACCOFFS_Y: -0.013, INS_ACCOFFS_Z: 0.045,
+  INS_ACCSCAL_X: 1.001, INS_ACCSCAL_Y: 0.999, INS_ACCSCAL_Z: 1.002,
   // Battery + arming
   BATT_MONITOR: 4, ARMING_CHECK: 1,
 }));
