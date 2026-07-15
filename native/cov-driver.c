@@ -8,6 +8,10 @@
 #include <math.h>
 #include <stdio.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 static int fails = 0;
 static void expect(int ok, const char *what) {
   if (!ok) { printf("FAIL cov-driver: %s\n", what); fails++; }
