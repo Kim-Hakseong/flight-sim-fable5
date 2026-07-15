@@ -35,7 +35,7 @@ import { G, quatIntegrate, quatRotate, quatConjugate } from './physics.js';
 // closed-loop that feedback spirals. Fix like real FCs: subtract the centripetal
 // term ω × v (pitot speed along the nose) so the residual is gravity again; a
 // norm band gates whatever the compensation misses.
-export const ATT = { KP: 1.0, KI: 0.05, KMAG: 0.3, ACC_BAND: 0.15 };
+export const ATT = { KP: 1.0, KI: 0.05, KMAG: 0.3, ACC_BAND: 0.05 };
 
 export function createAttEstimator(state) {
   return { quat: [...state.quat], bias: [0, 0, 0], lpErr: 0 };

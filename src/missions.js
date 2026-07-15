@@ -28,9 +28,9 @@ export function horizontalDistance(pos, target) {
   return Math.hypot(target.x - pos[0], target.z - pos[2]);
 }
 
-// One sequencing step. mission: { targets, idx }. Pure — returns
-// { mission, target, reached, action } where reached lists the seqs completed
-// this step and action is 'fly' | 'land' | 'rtl' | 'done'.
+// One sequencing step. mission: { targets, idx }. pos = [x, y(alt), z]. Pure —
+// returns { mission, target, reached, action } where reached lists the seqs
+// completed this step and action is 'takeoff' | 'fly' | 'land' | 'rtl' | 'done'.
 export function missionStep(pos, mission) {
   const { targets } = mission;
   let idx = mission.idx;
@@ -40,7 +40,14 @@ export function missionStep(pos, mission) {
     const t = targets[idx];
     if (t.command === CMD.LAND) return { mission: { targets, idx }, target: t, reached, action: 'land' };
     if (t.command === CMD.RTL) return { mission: { targets, idx }, target: null, reached, action: 'rtl' };
-    if (t.command !== CMD.WAYPOINT && t.command !== CMD.TAKEOFF) {
+    if (t.command === CMD.TAKEOFF) {
+      // A takeoff item is NOT a position to fly to — its lat/lon is often 0/0
+      // (a phantom point far away). It means "climb straight ahead to this
+      // altitude, then continue". Reached once airborne at the target altitude.
+      if (pos[1] >= t.alt - 5) { reached.push(t.seq); idx++; continue; }
+      return { mission: { targets, idx }, target: t, reached, action: 'takeoff' };
+    }
+    if (t.command !== CMD.WAYPOINT) {
       idx++; // unsupported item: sequence through it so the mission can't stall
       continue;
     }

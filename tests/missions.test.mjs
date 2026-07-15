@@ -45,6 +45,25 @@ test('missionStep: advances through reached and unsupported items', () => {
   assert.deepEqual(done.reached, [2]);
 });
 
+test('missionStep: a NAV_TAKEOFF item climbs to altitude, ignoring its (phantom) lat/lon', () => {
+  // QGC gives NAV_TAKEOFF lat/lon = 0/0 → a point ~12000 km away. It must NOT be
+  // flown to; it means "climb to this altitude, then continue".
+  const targets = [
+    { seq: 0, command: CMD.TAKEOFF, x: -11177133, z: 4168347, alt: 60, accept: 60 },
+    { seq: 1, command: CMD.WAYPOINT, x: 500, z: 0, alt: 100, accept: 60 },
+  ];
+  // still below takeoff altitude → action 'takeoff', NOT reached, target = the item
+  const climbing = missionStep([0, 30, 0], { targets, idx: 0 });
+  assert.equal(climbing.action, 'takeoff');
+  assert.deepEqual(climbing.reached, []);
+  assert.equal(climbing.mission.idx, 0);
+  // at altitude → takeoff item reached, advance to the first real waypoint
+  const done = missionStep([0, 58, 0], { targets, idx: 0 });
+  assert.deepEqual(done.reached, [0]);
+  assert.equal(done.action, 'fly');
+  assert.equal(done.target.seq, 1);
+});
+
 test('missionStep: LAND and RTL items surface as actions', () => {
   const land = missionStep([0, 100, 0], {
     targets: [{ seq: 0, command: CMD.LAND, x: 900, z: 0, alt: 20, accept: 60 }], idx: 0,

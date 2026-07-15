@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  stepAircraft, initialState, quatMultiply, TRIM, AC, G,
+  stepAircraft, initialState, groundState, quatMultiply, TRIM, AC, G,
 } from '../src/physics.js';
 import { createAttEstimator, stepAttEstimator, createEstimator, stepEstimator } from '../src/estimator.js';
 import { createSensors, stepSensors, injectFault, specificForce } from '../src/sensors.js';
@@ -110,4 +110,33 @@ test('gyro dropout: attitude degrades gracefully, no blow-up', () => {
   });
   const err = qErrDeg(att.quat, s.quat);
   assert.ok(Number.isFinite(err) && err < 25, `err ${err}° (accel/mag alone must roughly hold it)`);
+});
+
+test('attitude estimate stays bounded through a full-power takeoff acceleration', () => {
+  // Root-cause regression: linear takeoff acceleration tilts the specific-force
+  // vector; if the accelerometer isn't gated the estimate reads a false nose-up
+  // and drives the aircraft into the ground. Estimated pitch must track truth.
+  let s = { ...groundState(), pos: [0, 0, 0] };
+  let sns = createSensors(21);
+  let att = createAttEstimator(s);
+  let readings = null;
+  let maxPitchErr = 0;
+  for (let i = 0; i < 25 * 60; i++) {
+    // full-throttle ground roll then gentle rotation — the accelerating phase
+    const va = readings?.pitot?.[0] ?? 0;
+    const eT = eulerFromQuat(s.quat);
+    const c = {
+      aileron: -1.2 * eT.roll,
+      elevator: va >= 20 ? (TRIM.de / AC.maxDef) - 0.2 : TRIM.de / AC.maxDef,
+      rudder: 0,
+      throttle: 1,
+    };
+    s = stepAircraft(s, c, DT);
+    const sw = stepSensors(sns, s, P);
+    sns = sw.sensors;
+    readings = sw.readings;
+    att = stepAttEstimator(att, readings, DT);
+    if (s.pos[1] > 2) maxPitchErr = Math.max(maxPitchErr, Math.abs((eulerFromQuat(att.quat).pitch - eulerFromQuat(s.quat).pitch) * 180 / Math.PI));
+  }
+  assert.ok(maxPitchErr < 20, `attitude pitch error blew up during takeoff accel: ${maxPitchErr.toFixed(0)}°`);
 });

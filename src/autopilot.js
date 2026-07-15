@@ -86,10 +86,11 @@ export function manualControls(state, stick) {
   };
 }
 
+export const CLIMBOUT_PITCH = 0.18; // rad (~10°) — steady climb-out attitude
+
 // Ground roll: full power, rudder steers the given heading, wings held level;
-// rotate (elevator up) once the pitot reaches Vr. Used by TAKEOFF mode and by
-// AUTO when a mission is started from the runway (real ArduPlane behavior —
-// without this, AUTO on the ground just rudder-spins toward the first waypoint).
+// rotate (elevator up, gently) once the pitot reaches Vr. Used by TAKEOFF mode
+// and by AUTO when a mission is started from the runway.
 function groundRollControls(state, targetHeading, va) {
   const e = eulerFromQuat(state.quat);
   const [p, , r] = toFRD(state.omega);
@@ -97,8 +98,26 @@ function groundRollControls(state, targetHeading, va) {
   const speed = va ?? Math.hypot(state.vel[0], state.vel[2]);
   return {
     aileron: clamp(-1.5 * e.roll - 0.2 * p, -1, 1),
-    elevator: speed >= TAKEOFF_VR_MS ? clamp(DE_TRIM - 0.45, -1, 1) : DE_TRIM,
+    // gentle rotation: a hard pull initiates a phugoid the estimator amplifies
+    elevator: speed >= TAKEOFF_VR_MS ? clamp(DE_TRIM - 0.20, -1, 1) : DE_TRIM,
     rudder: clamp(-0.04 * hdgErr + 0.8 * r, -1, 1),
+    throttle: 1,
+  };
+}
+
+// Climb-out: hold a fixed climb PITCH attitude (not an altitude loop) on the
+// runway heading, full power. Attitude hold has no altitude feedback to oscillate,
+// so it stays stable through the estimator noise right after liftoff — the
+// altitude loop (holdControls) only takes over once near the target altitude.
+function climboutControls(state, targetHeading) {
+  const e = eulerFromQuat(state.quat);
+  const [p, q, r] = toFRD(state.omega);
+  const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
+  const bankT = clamp(hdgErr * DP.AP_HDG_P, -0.35, 0.35);
+  return {
+    aileron: clamp(DP.AP_ROLL_KP * (bankT - e.roll) - DP.AP_ROLL_KD * p, -1, 1),
+    elevator: clamp(DE_TRIM - DP.AP_PITCH_KP * (CLIMBOUT_PITCH - e.pitch) + DP.AP_PITCH_KD * q, -1, 1),
+    rudder: clamp(-DP.AP_YAW_KD * ((G / 30) * Math.tan(e.roll) - r), -1, 1),
     throttle: 1,
   };
 }
@@ -135,6 +154,10 @@ export function apStep(state, ap, P = DP, va = null) {
       if (state.wow ?? state.pos[1] <= 0.5) {
         return out(groundRollControls(state, ap.targetHeading, va), ap);
       }
+      // fixed-attitude climb-out until near target alt, then altitude hold
+      if (state.pos[1] < ap.targetAlt - 15) {
+        return out(climboutControls(state, ap.targetHeading), ap);
+      }
       return out(holdControls(state, ap.targetAlt, ap.targetHeading, 1, P, va), ap);
     }
     case MODES.RTL: {
@@ -149,14 +172,23 @@ export function apStep(state, ap, P = DP, va = null) {
     }
     case MODES.AUTO: {
       if (!ap.mission) break; // no plan yet: hold
-      if ((state.wow ?? state.pos[1] <= 0.5) && Math.hypot(state.vel[0], state.vel[2]) < TAKEOFF_VR_MS + 5) {
-        // Mission started from the runway: ground-roll takeoff straight ahead on
-        // the heading captured at mode entry, then the waypoint logic takes over.
+      // Mission started from the runway: ground-roll while on the wheels (same
+      // discrete as TAKEOFF mode — a groundspeed gate over-rotates and porpoises),
+      // then the takeoff/waypoint logic takes over the moment we're airborne.
+      if (state.wow ?? state.pos[1] <= 0.5) {
         return out(groundRollControls(state, ap.targetHeading, va), ap);
       }
       const ms = missionStep(state.pos, ap.mission);
       next = { ...ap, mission: ms.mission };
       stepReached = ms.reached;
+      if (ms.action === 'takeoff') {
+        // Airborne but still on the takeoff item: fixed-attitude climb-out on the
+        // entry heading (do NOT fly to its lat/lon), altitude hold near the top.
+        if (state.pos[1] < ms.target.alt - 15) {
+          return out(climboutControls(state, ap.targetHeading), next);
+        }
+        return out(holdControls(state, ms.target.alt, ap.targetHeading, 1, P, va), next);
+      }
       if (ms.action === 'land') {
         const brg = bearingToDeg(state.pos, [ms.target.x, 0, ms.target.z]);
         next = { ...next, landing: true, targetHeading: brg };
