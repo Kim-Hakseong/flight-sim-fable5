@@ -602,3 +602,10 @@
 **Tests**: unit 94/94 · gcs PASS · HILS 7/7 · browser PASS · RTL 착륙 crash 오탐 0/9(전 시드) · 실제 전복은 여전히 래치
 **Decisions**: 사용자 보고 "원래 되던 복귀(RTL)/Loiter가 안됨". 재현: 모델·브리지 레벨 RTL/Loiter는 정상이나, seed 21(라이브 기본값)에서 정상 RTL 착륙이 crash로 오탐 → 착륙 직후 disarm 래치로 "복귀 안됨"처럼 보임. 원인: crash 임계값(롤 34°/피치 29°)이 정상 착륙 범위(최종선회+난류로 롤 ~36°, 플레어 피치 ~25°) 안쪽. 수정: 임계를 롤 69°/피치 52°로 완화 — 정상·거친 착륙에는 절대 안 걸리고 명백한 전복/텀블만 래치. 검증: 9시드 RTL 착륙 오탐 0, 뒤집힌 접지는 여전히 crash.
 **Notes**: 별도 fdm-uav-gcs 프로토타입(헤드리스 MAVLink 백엔드 + QGC 커스텀 레이어)은 병행 진행 중. 백엔드 gcs-check PASS.
+
+## 2026-07-15 — QGC 실테스트 피드백 8: "Guided Mode Item 미응답" — 유도 go-to 미션아이템 경로 추가
+
+**Status**: GREEN
+**Files changed**: bridge/server.mjs, tests/gcs-loop-check.mjs (+ fdm-uav-gcs/backend 병행)
+**Tests**: unit 94/94 · gcs PASS(신규: guided MISSION_ITEM_INT(current=2) ACK+goto) · backend gcs-check PASS
+**Decisions**: 사용자 "미션 포인트 전송 실패: 기체가 미션 항목 통신 Guided Mode Item에 반응하지 않음". 모드는 이미 GUIDED(relayMode 정상). 원인: QGC "여기로 이동"이 목표점을 DO_REPOSITION이 아니라 **standalone MISSION_ITEM_INT with current==2(guided goto)** 로 보내고 MISSION_ACK를 기다리는데, 우리 onMissionItem은 업로드 핸드셰이크 중에만 반응(upload===null이면 무시) → 미응답. 수정: upload가 없고 current===2인 MISSION_ITEM_INT는 goto로 처리하고 MISSION_ACK(ACCEPTED) 회신. 브리지 + 헤드리스 백엔드 양쪽 적용.

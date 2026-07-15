@@ -161,6 +161,15 @@ function startUpload(count) {
 }
 
 function onMissionItem(f) {
+  // A guided-mode go-to: QGC's "Go to location" can deliver the target as a
+  // standalone MISSION_ITEM_INT with current == 2 (not through an upload
+  // handshake or DO_REPOSITION). It expects a MISSION_ACK back — without it QGC
+  // reports "vehicle does not respond to the Guided Mode Item".
+  if (!upload && f.current === 2) {
+    pushCommand({ type: 'goto', lat: f.x / 1e7, lon: f.y / 1e7, alt: f.z });
+    sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
+    return;
+  }
   if (!upload || f.seq !== upload.items.length) return; // duplicate/stray
   upload.items.push(f);
   upload.tries = 0;

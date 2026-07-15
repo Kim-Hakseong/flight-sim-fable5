@@ -207,6 +207,19 @@ try {
   const gotoEvt = await sseWait((e) => e.type === 'goto');
   check(gotoEvt && Math.abs(gotoEvt.lat - 37.46) < 1e-6 && gotoEvt.alt === 140, 'go-to relayed to the sim over SSE');
 
+  // guided-mode go-to delivered as a standalone MISSION_ITEM_INT (current=2) →
+  // must ACK and relay as a goto (QGC "Go to location" path that isn't DO_REPOSITION).
+  received.delete('MISSION_ACK');
+  await sendToBridge('MISSION_ITEM_INT', {
+    param1: 0, param2: 0, param3: 0, param4: 0,
+    x: Math.round(37.455 * 1e7), y: Math.round(126.472 * 1e7), z: 130,
+    seq: 0, command: 16, target_system: 1, target_component: 1, frame: 3, current: 2, autocontinue: 0,
+  });
+  const gAck = await waitFor('MISSION_ACK');
+  check(gAck?.fields.type === 0, 'guided MISSION_ITEM_INT(current=2) → MISSION_ACK(ACCEPTED)');
+  const gGoto = await sseWait((e) => e.type === 'goto' && Math.abs(e.lat - 37.455) < 1e-6);
+  check(!!gGoto, 'guided MISSION_ITEM_INT relayed as a go-to');
+
   // 3d) Mission progress: telemetry drives MISSION_CURRENT + MISSION_ITEM_REACHED.
   received.delete('MISSION_CURRENT');
   await fetch(`http://127.0.0.1:${httpPort}/telemetry`, {
