@@ -594,3 +594,11 @@
 **Decisions**: 최신 코드로 crash/롤오버는 해소됨(사용자 화면: 활주로 정상 이륙). 새 증상 "미션 시작 불가: Auto 모드 진입 실패". 원인: HEARTBEAT의 customMode가 텔레메트리로만 갱신되어 QGC 명령→SSE→심→텔레메트리(10Hz)→HEARTBEAT(1Hz) 왕복 최대 ~1.1s 지연 → QGC의 모드전환 검증 타임아웃.
 - 수정: relayMode() 헬퍼 — 모드 명령 릴레이 시 vehicle.customMode를 낙관적으로 즉시 반영하고 HEARTBEAT를 즉시 1발 전송. 심이 텔레메트리로 확정(불일치 시 다음 텔레메트리가 정정). SET_MODE/DO_SET_MODE(176)/DO_PAUSE_CONTINUE(193)/MISSION_START(300) 전 경로에 적용.
 **Notes**: 사용자가 최신 코드로 정상 이륙 확인됨 — 이전 세션들 수정(이륙아이템·이륙PIO·가속자세·뱅크보호·crash)이 실물에서 효과. 남은 건 GCS 프로토콜 타이밍뿐이었음.
+
+## 2026-07-15 — QGC 실테스트 피드백 7: RTL/Loiter 회귀 — crash 감지 오탐 수정
+
+**Status**: GREEN
+**Files changed**: src/vehicle.js
+**Tests**: unit 94/94 · gcs PASS · HILS 7/7 · browser PASS · RTL 착륙 crash 오탐 0/9(전 시드) · 실제 전복은 여전히 래치
+**Decisions**: 사용자 보고 "원래 되던 복귀(RTL)/Loiter가 안됨". 재현: 모델·브리지 레벨 RTL/Loiter는 정상이나, seed 21(라이브 기본값)에서 정상 RTL 착륙이 crash로 오탐 → 착륙 직후 disarm 래치로 "복귀 안됨"처럼 보임. 원인: crash 임계값(롤 34°/피치 29°)이 정상 착륙 범위(최종선회+난류로 롤 ~36°, 플레어 피치 ~25°) 안쪽. 수정: 임계를 롤 69°/피치 52°로 완화 — 정상·거친 착륙에는 절대 안 걸리고 명백한 전복/텀블만 래치. 검증: 9시드 RTL 착륙 오탐 0, 뒤집힌 접지는 여전히 crash.
+**Notes**: 별도 fdm-uav-gcs 프로토타입(헤드리스 MAVLink 백엔드 + QGC 커스텀 레이어)은 병행 진행 중. 백엔드 gcs-check PASS.

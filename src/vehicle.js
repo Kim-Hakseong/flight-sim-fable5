@@ -133,13 +133,15 @@ export function vehicleStep(v, dt, stick = null, direct = null) {
     windEst: v.windEst, wow: v.state.pos[1] <= 0.5,
   };
 
-  // Crash detection (weight-on-wheels with an attitude no landing produces): a
-  // real HILS discrete. Latched — disarm + neutral, and the AP ground-roll retry
-  // (which would skid the wreck around) is suppressed until reset.
+  // Crash detection (weight-on-wheels with an attitude no landing could produce):
+  // a real HILS discrete. Latched — disarm + neutral, and the AP ground-roll retry
+  // (which would skid the wreck around) is suppressed until reset. Thresholds sit
+  // WELL outside a normal — even gusty, banked-onto-final — landing (which reaches
+  // ~35° roll / ~25° pitch), so only a genuine roll-over / tumble trips it.
   let crashed = v.crashed;
   if (!crashed && v.state.pos[1] <= 0.5 && !direct) {
     const e = eulerFromQuat(v.state.quat);
-    if (Math.abs(e.roll) > 0.6 || Math.abs(e.pitch) > 0.5) crashed = true;
+    if (Math.abs(e.roll) > 1.2 || Math.abs(e.pitch) > 0.9) crashed = true; // ~69° / ~52°
   }
 
   let { ap, armed, lastReached } = v;
