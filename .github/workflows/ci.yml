@@ -25,8 +25,12 @@ jobs:
         run: node tests/plant-check.mjs
       - name: ArduPilot SITL JSON adapter check
         run: node tests/sitl-check.mjs
-      - name: Native C core — golden cross-validation + .so build
+      - name: Install gcc-14 (for MC/DC -fcondition-coverage)
+        run: sudo apt-get update && sudo apt-get install -y gcc-14
+      - name: Native C core — golden cross-validation + coverage + .so/FMU build
         run: make -C native golden nivs spec fmu-check coverage so fmu
+      - name: Native C core — MC/DC condition coverage (gcc-14)
+        run: make -C native mcdc CC=gcc-14
       - name: Browser gate (headless Chrome, console-0 + determinism + DOM)
         env:
           CHROME_BIN: /usr/bin/google-chrome

@@ -462,3 +462,17 @@
 - Wired: `npm run coverage`, `make -C native coverage`, both added to CI. COMPLIANCE-DO331.md updated: MB.A-5 gains a structural-coverage row (E), MB.A-7 line-coverage → E / MC-DC → P, §5 evidence + §6 gap #2 rewritten honestly (line covered+gated; MC/DC still needs a dedicated tool for DAL A).
 **Next**:
 - Remaining DO-331 gaps are the ones needing commercial tools/process (DO-330 tool qual, MC/DC via VectorCAST/LDRA, verification independence, formal CM) — close per a target DAL when a real cert engagement defines it.
+
+## 2026-07-15 — M27: MC/DC condition coverage (closes DO-331 §6 gap #2 fully — measurement)
+
+**Status**: GREEN
+**Files changed**: native/{cov-driver.c(expanded),mcdc.sh,Makefile,.gitignore}, .github/workflows/ci.yml, COMPLIANCE-DO331.md
+**Tests**: **fdm.c MC/DC = 98.7% condition coverage (75/76) — 100% of reachable conditions**; C line 100%; JS model modules 100% line; unit 89/89; all prior gates green
+**Decisions**:
+- Added real MC/DC measurement using gcc-14+ `-fcondition-coverage` + `gcov --conditions` — toolchain-native, no commercial tool (VectorCAST/LDRA not required for measurement).
+- golden-check alone gave 73.7% conditions; expanded cov-driver.c (assertion-backed) to exercise every reachable boundary/fault decision the golden trajectories miss: altitude clamps, deflection/throttle rail clamps, servo faults (jam/floating/slow incl. default-factor), act_ch saturation (k>1), wind Gauss-Markov alpha clamp, null-env/no-wind paths, ground sink/friction/attitude clamps (both sides via a below-surface climb-out transient), and the euler asin guard via a denormalized quat → 98.7%.
+- The single residual (L71 `quat_normalize` zero-norm guard) is provably unreachable defensive code — formally justified per DO-178C §6.4.4.3 and allowlisted in mcdc.sh; every other uncovered condition fails the build.
+- mcdc.sh skips gracefully (exit 0) when no gcc>=14 is present (Apple clang has no -fcondition-coverage), so local macOS dev isn't blocked; CI installs gcc-14 and runs it for real (`make -C native mcdc CC=gcc-14`).
+- COMPLIANCE-DO331.md updated honestly: MB.A-7 MC/DC → E* (measured+gated, but the * flags that gcc's tool is not DO-330-qualified, so no cert credit); §5 gains the MC/DC evidence + the L71 justification; §6 gap #2 rewritten — the remaining gap is tool QUALIFICATION (DO-330), not measurement.
+**Next**:
+- Remaining DO-331 gaps are process/qualification-bound (DO-330 tool qual, verification independence, formal CM, requirements-mgmt tooling) — close per a real cert engagement's target DAL.
