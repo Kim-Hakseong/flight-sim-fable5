@@ -143,6 +143,15 @@ try {
   check(dsmAck?.fields.command === 176 && dsmAck.fields.result === 0, 'DO_SET_MODE → ACK(ACCEPTED)');
   const dsmEvt = await sseWait((e) => e.type === 'mode' && e.custom === 11);
   check(dsmEvt?.custom === 11, 'DO_SET_MODE(RTL) relayed to the sim over SSE');
+  // the bridge must reflect the new mode in a HEARTBEAT immediately (optimistic),
+  // not wait for the sim→telemetry→heartbeat round-trip (QGC mode-change timeout).
+  received.delete('HEARTBEAT');
+  await sendToBridge('COMMAND_LONG', {
+    param1: 81, param2: 10, param3: 0, param4: 0, param5: 0, param6: 0, param7: 0,
+    command: 176, target_system: 1, target_component: 1, confirmation: 0,
+  });
+  const hbMode = await waitFor('HEARTBEAT', 500); // must arrive well under the 1 Hz interval
+  check(hbMode?.fields.custom_mode === 10, 'HEARTBEAT reflects DO_SET_MODE(AUTO) immediately');
 
   received.delete('COMMAND_ACK');
   await sendToBridge('COMMAND_LONG', {

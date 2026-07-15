@@ -70,17 +70,17 @@ function handleCommandLong(f) {
       return MAV_RESULT_ACCEPTED;
     case 176: // MAV_CMD_DO_SET_MODE — newer QGC sends mode changes this way
       // (param1 = base_mode flags, param2 = custom_mode when CUSTOM_MODE_ENABLED)
-      pushCommand({ type: 'mode', custom: f.param2 >>> 0 });
+      relayMode(f.param2 >>> 0);
       return MAV_RESULT_ACCEPTED;
     case 193: // MAV_CMD_DO_PAUSE_CONTINUE — QGC pause/continue button
       // pause (param1=0) → LOITER hold-here; continue (param1=1) → resume AUTO
-      pushCommand({ type: 'mode', custom: f.param1 < 0.5 ? 12 : 10 });
+      relayMode(f.param1 < 0.5 ? 12 : 10);
       return MAV_RESULT_ACCEPTED;
     case 192: // MAV_CMD_DO_REPOSITION (COMMAND_LONG form: params 5/6/7 = lat/lon/alt)
       pushCommand({ type: 'goto', lat: f.param5, lon: f.param6, alt: f.param7 });
       return MAV_RESULT_ACCEPTED;
     case 300: // MAV_CMD_MISSION_START → fly the uploaded plan
-      pushCommand({ type: 'mode', custom: 10 }); // AUTO
+      relayMode(10); // AUTO
       return MAV_RESULT_ACCEPTED;
     default:
       return MAV_RESULT_UNSUPPORTED;
@@ -93,7 +93,7 @@ function handleCommandInt(f) {
     return MAV_RESULT_ACCEPTED;
   }
   if (f.command === 300) {
-    pushCommand({ type: 'mode', custom: 10 });
+    relayMode(10);
     return MAV_RESULT_ACCEPTED;
   }
   return MAV_RESULT_UNSUPPORTED;
@@ -206,7 +206,7 @@ udp.on('message', (buf, rinfo) => {
       sendMsg('COMMAND_ACK', { command: f.command, result: handleCommandInt(f) });
       break;
     case 'SET_MODE':
-      pushCommand({ type: 'mode', custom: f.custom_mode });
+      relayMode(f.custom_mode);
       break;
     case 'MISSION_COUNT':
       startUpload(f.count);
@@ -289,7 +289,7 @@ function statusTextOnFaultEdges(faults = {}) {
   lastFaults = faults;
 }
 
-setInterval(() => {
+function sendHeartbeat() {
   sendMsg('HEARTBEAT', {
     custom_mode: vehicle.customMode, // ArduPlane numbering (sim-side MODES map)
     type: 1, // MAV_TYPE_FIXED_WING
@@ -298,7 +298,18 @@ setInterval(() => {
     system_status: vehicle.armed ? 4 : 3, // ACTIVE : STANDBY
     mavlink_version: 3,
   });
-}, 1000);
+}
+setInterval(sendHeartbeat, 1000);
+
+// Relay a mode change to the sim AND reflect it in the HEARTBEAT immediately.
+// Without the optimistic update, QGC waits on the command → SSE → sim → telemetry
+// (10 Hz) → HEARTBEAT (1 Hz) round-trip (~1 s) and times out its mode-change
+// verification ("failed to enter Auto mode"). The sim confirms via telemetry.
+function relayMode(custom) {
+  pushCommand({ type: 'mode', custom });
+  vehicle = { ...vehicle, customMode: custom >>> 0 };
+  sendHeartbeat();
+}
 
 function relayTelemetry(t) {
   const ms = t.timeBootMs >>> 0;

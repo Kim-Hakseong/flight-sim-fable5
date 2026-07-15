@@ -585,3 +585,12 @@
 - 주의: 이 crashed 상태는 실기 GCS 관례대로 하드웨어 스위치 개념(진값 WoW+자세)으로만 트리거 — 제어경로의 추정치는 무관.
 **Notes**:
 - 사용자 화면이 stale일 가능성 큼(git pull + 브리지 완전 재시작 + R로 리셋 필요). 현행 코드는 전 재현에서 롤오버 없음.
+
+## 2026-07-15 — QGC 실테스트 피드백 6: "Auto 모드 진입 실패" — 모드 확인 지연 해소
+
+**Status**: GREEN
+**Files changed**: bridge/server.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 94/94 · gcs PASS (신규: DO_SET_MODE 후 즉시 HEARTBEAT 반영 검증) · browser PASS
+**Decisions**: 최신 코드로 crash/롤오버는 해소됨(사용자 화면: 활주로 정상 이륙). 새 증상 "미션 시작 불가: Auto 모드 진입 실패". 원인: HEARTBEAT의 customMode가 텔레메트리로만 갱신되어 QGC 명령→SSE→심→텔레메트리(10Hz)→HEARTBEAT(1Hz) 왕복 최대 ~1.1s 지연 → QGC의 모드전환 검증 타임아웃.
+- 수정: relayMode() 헬퍼 — 모드 명령 릴레이 시 vehicle.customMode를 낙관적으로 즉시 반영하고 HEARTBEAT를 즉시 1발 전송. 심이 텔레메트리로 확정(불일치 시 다음 텔레메트리가 정정). SET_MODE/DO_SET_MODE(176)/DO_PAUSE_CONTINUE(193)/MISSION_START(300) 전 경로에 적용.
+**Notes**: 사용자가 최신 코드로 정상 이륙 확인됨 — 이전 세션들 수정(이륙아이템·이륙PIO·가속자세·뱅크보호·crash)이 실물에서 효과. 남은 건 GCS 프로토콜 타이밍뿐이었음.
