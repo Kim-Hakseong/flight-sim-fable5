@@ -497,3 +497,13 @@
 - browser-check DOM gate extended to cover all three elements; channel monitor is opened before the screenshot so the CI artifact shows the delivery view.
 **Next**:
 - (idle) Backlog: DO-330-bound gaps per a real cert engagement; FMI 3.0 variant; QGC visual pass.
+
+## 2026-07-15 — docs: README 한국어판
+
+**Status**: GREEN
+**Files changed**: README.md, Log.md
+**Tests**: 문서만 변경
+**Decisions**:
+- README를 한국어 중심으로 재작성 (최상단에 영문 한 줄 요약만 유지). 구성은 동일: 개요 → 납품물 → 검증·품질 → 시뮬레이터 기능 → 실행·빌드 → 구조 → 문서 → 범위와 정직성.
+- 사용자 지적 반영: "가짜 비행기" 표현 제거 → "조종면 명령에 실제 항공기처럼 응답하는 **모의 비행체 — 플랜트 모델**"로 교체.
+- M28 산출물(채널 모니터 C키, hilspanel) 반영. 전략·회사명은 계속 미노출 (MARKET.md 비링크 유지).
