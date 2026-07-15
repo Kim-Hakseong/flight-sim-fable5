@@ -427,3 +427,25 @@
 - Strategy (MARKET.md §6): first product = golden-VALIDATED small-UAV plant model + auto interface spec + CI traceability (the layer competitors don't productize). Priority customers: (1) HILS integrators (리얼타임웨이브) as an OEM model SUPPLIER via FMU, (2) UAV 체계개발 (KAI/한화시스템) reference-plant channel, (3) ADD/연구기관 independent-verification-model channel.
 **Next**:
 - Optional: FMI 3.0 variant; ADD-checklist doc mapping our CI evidence to DO-331-style traceability; re-verify the §5 unverified market items after limit reset.
+
+## 2026-07-15 — DO-331 traceability mapping doc + milestone roll-up
+
+**Status**: GREEN
+**Files changed**: COMPLIANCE-DO331.md (new), Log.md
+**Tests**: no code change (documentation) — full suite remains 89/89 unit · GCS · HILS 7 · plant · SITL · native golden/nivs/spec/fmu-check · browser, all CI-green
+**Decisions**:
+- Wrote COMPLIANCE-DO331.md: maps every project artifact to DO-331 (Model-Based Dev supplement) objectives. Explicitly a MAPPING, not a certification claim — §6 lists the honest gaps (DO-330 tool qual, structural coverage, verification independence, CM process, MISRA-C, DOORS-style req mgmt).
+- Core content: model classification (Design/plant model; JS = reference, C/FMU = deployable, CI proves bit-equivalence); requirements hierarchy (PRD milestones = HLR, channels.json = interface reqs); a full requirements→model-element→verification traceability matrix mapping all 89 unit tests + every gate; MB.A-3..A-7 objective tables with E/P/G status; determinism + reference↔deployment equivalence evidence.
+- This operationalizes the MARKET.md §6 differentiator ("검증된 모델 + 자동 트레이서빌리티") as a customer-facing baseline document for ADD/체계업체 cert integration.
+
+**Project milestone roll-up (M0–M25, all GREEN, CI-gated):**
+- M0–M6  GCS core: fixed-step deterministic sim; MAVLink v1 bridge+telemetry; ARM/mode/takeoff/land/RTL; missions+GUIDED; parameters; sensor-fault health (SYS_STATUS/STATUSTEXT); battery/EKF/lifecycle telemetry.
+- M7–M13 Fidelity: Simulink/UAV-grade 6-DOF (moments+inertia, stability derivatives, actuators, SLC autopilot); engineering visuals; wind+Dryden turbulence; HILS engineering console; autopilot-flies-the-estimate (+pitot); Mahony attitude estimator (+true specific force); ground-roll takeoff.
+- M14–M22 Bench+reach: shared vehicle module + HILS scenario runner/bench; GitHub Actions CI; servo faults + rudder roll-assist; onboard wind estimation+crab / QGC MANUAL_CONTROL joystick / MAVLink v2; sim-as-plant UDP lockstep; ArduPilot SITL JSON adapter; cinematic then class-correct UAV visuals.
+- M23–M25 Product ("yolk"): portable C99 FDM core with JS-golden cross-validation (1e-13); NI VeriStand Model Framework wrapper + channels.json-driven interface spec autogen; **FMI 2.0 FMU export as primary delivery format** (market-driven pivot per MARKET.md, verified through the real fmi2 ABI).
+- Deliverables now emitted+CI-gated: libfdm.so, fdm-uav.fmu, INTERFACE.md, VeriStand wrapper, MARKET.md strategy, COMPLIANCE-DO331.md.
+
+**Next**:
+- Optional: FMI 3.0 variant; close specific DO-331 gaps on demand (structural coverage tooling, MISRA-C static analysis) per a target DAL; re-verify MARKET.md §5 unverified items after limit reset; local QGC visual pass.
+**Notes**:
+- Log.md was already current through M25; this entry adds the DO-331 work plus a scannable M0–M25 roll-up so the 25-milestone history reads at a glance.
