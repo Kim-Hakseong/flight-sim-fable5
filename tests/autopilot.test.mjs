@@ -119,3 +119,18 @@ test('determinism: a full RTL flight is bit-identical across reruns', () => {
   };
   assert.equal(fly(), fly());
 });
+
+test('bank-angle protection: recovers from a 90° over-bank instead of spiralling in', () => {
+  const s0 = initialState();
+  const h = (90 / 2) * (Math.PI / 180);
+  let s = { ...s0, quat: [s0.quat[0], s0.quat[1] - Math.sin(h), s0.quat[2], s0.quat[3]] };
+  // normalize
+  const n = Math.hypot(...s.quat); s = { ...s, quat: s.quat.map((x) => x / n) };
+  let recovered = false;
+  for (let i = 0; i < 30 * 60 && s.pos[1] > 1; i++) {
+    s = stepAircraft(s, holdControls(s, 120, 0), DT);
+    if (Math.abs(eulerFromQuat(s.quat).roll) < 0.15) recovered = true;
+  }
+  assert.ok(recovered, 'never rolled back to wings-level from 90° bank');
+  assert.ok(s.pos[1] > 1, 'crashed while recovering');
+});

@@ -275,7 +275,10 @@ function statusTextOnLifecycleEdges(t) {
 function statusTextOnFaultEdges(faults = {}) {
   for (const [sensor, type] of Object.entries(faults)) {
     if (lastFaults[sensor] !== type) {
-      sendMsg('STATUSTEXT', { severity: 4, text: `${sensor.toUpperCase()} fault: ${type}` }); // WARNING
+      sendMsg('STATUSTEXT', {
+        severity: sensor === 'crash' ? 2 : 4, // CRITICAL vs WARNING
+        text: sensor === 'crash' ? 'CRASH DETECTED — vehicle disarmed' : `${sensor.toUpperCase()} fault: ${type}`,
+      });
     }
   }
   for (const sensor of Object.keys(lastFaults)) {

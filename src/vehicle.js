@@ -42,6 +42,7 @@ export function createVehicle({ boot = 'ground', sensorSeed = 1, windSeed = 2, p
     lastReached: -1,
     windEst: createWindEstimator(),
     gcsStick: null, gcsStickAge: 1e9, // MANUAL_CONTROL joystick (freshness-gated)
+    crashed: false, // weight-on-wheels crash latch (cleared only by reset)
     servoFaults: {}, // channel (da/de/dr/dt) → {type: jam|floating|slow, factor?}
   };
 }
@@ -132,9 +133,21 @@ export function vehicleStep(v, dt, stick = null, direct = null) {
     windEst: v.windEst, wow: v.state.pos[1] <= 0.5,
   };
 
+  // Crash detection (weight-on-wheels with an attitude no landing produces): a
+  // real HILS discrete. Latched — disarm + neutral, and the AP ground-roll retry
+  // (which would skid the wreck around) is suppressed until reset.
+  let crashed = v.crashed;
+  if (!crashed && v.state.pos[1] <= 0.5 && !direct) {
+    const e = eulerFromQuat(v.state.quat);
+    if (Math.abs(e.roll) > 0.6 || Math.abs(e.pitch) > 0.5) crashed = true;
+  }
+
   let { ap, armed, lastReached } = v;
   let controls;
-  if (direct) {
+  if (crashed) {
+    armed = false;
+    controls = { aileron: 0, elevator: 0, rudder: 0, throttle: 0 };
+  } else if (direct) {
     controls = direct;
   } else if (ap.mode === MODES.MANUAL && !ap.landing) {
     // GCS joystick wins while fresh (< 1 s); keyboard/neutral is the fallback.
@@ -154,7 +167,7 @@ export function vehicleStep(v, dt, stick = null, direct = null) {
   const sw = stepSensors(v.sensors, state, v.params, w.windWorld);
   return {
     ...v,
-    state, armed, ap, lastReached,
+    state, armed, ap, lastReached, crashed,
     lastControls: controls,
     wind: w.wind, windWorld: w.windWorld,
     sensors: sw.sensors, readings: sw.readings,
@@ -180,6 +193,7 @@ export function vehicleTelemetry(v) {
     faults: {
       ...v.readings?.faults,
       ...Object.fromEntries(Object.entries(v.servoFaults).map(([ch, f]) => [`servo_${ch}`, f.type])),
+      ...(v.crashed ? { crash: 'detected' } : {}),
     },
     est: v.est, ekf: ekfReport(v.est, v.readings),
     va: v.readings?.pitot?.[0] ?? undefined,

@@ -99,3 +99,17 @@ test('determinism: the full closed loop is bit-identical across reruns', () => {
   };
   assert.equal(fly(), fly());
 });
+
+test('crash detection: a bad-attitude touchdown latches disarmed and stops', () => {
+  let v = createVehicle({ boot: 'air', sensorSeed: 21, windSeed: 22 });
+  // slam it onto the runway inverted-ish with speed
+  const bad = { ...v.state, pos: [0, 0.3, 0], vel: [20, -8, -20], quat: [0, 0, -0.7, 0.71], omega: [0, 0, 0] };
+  v = { ...v, state: bad };
+  for (let i = 0; i < 5 * 60; i++) v = vehicleStep(v, DT);
+  assert.ok(v.crashed, 'crash not detected on a rolled-over touchdown');
+  assert.ok(!v.armed, 'crashed vehicle still armed');
+  assert.ok(v.state.act.dt < 0.02, 'engine not cut after crash');
+  const restX = v.state.pos[0], restZ = v.state.pos[2];
+  for (let i = 0; i < 10 * 60; i++) v = vehicleStep(v, DT);
+  assert.ok(Math.hypot(v.state.pos[0] - restX, v.state.pos[2] - restZ) < 30, 'wreck skids away instead of stopping');
+});

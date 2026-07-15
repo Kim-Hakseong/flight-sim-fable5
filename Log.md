@@ -573,3 +573,15 @@
 2. **지상 AUTO 시작 시 지상활주 판정을 지상속도(25 m/s) 기준**으로 해 과도 로테이션·porpoise. 수정: TAKEOFF 모드와 동일하게 WoW(접지) 기준.
 3. **근본 원인 — 이륙 가속 중 자세추정기 발산**: 선형 이륙가속(0→30 m/s)이 비력 벡터를 기울여 가속도계가 "기수 +20°"로 오인(실제 −27°). 제어기가 그 47° 오차로 기수를 처박음. 원심 보상(ω×v)은 있으나 선형가속 보상 부재 → 가속 중 가속도계를 게이팅 차단하도록 ACC_BAND 0.15→0.05(정상비행 ‖f‖≈g는 통과, 협조선회는 원심보상으로 통과). 부수: 로테이션 완화(−0.45→−0.20) + 고정자세 climb-out 로직(고도루프 대신 피치 10° 유지, 목표−15m부터 고도홀드) 추가.
 - 결과: QGC식 풀미션(이륙아이템+웨이포인트3+착륙패턴) E2E — 7초 이륙, 이륙아이템→WP1,2,3→착륙·disarm, 홈 561m. 이륙 자세오차 9~11°.
+
+## 2026-07-15 — QGC 실테스트 피드백 5: 롤오버 나선 방지 + crash 감지 래치
+
+**Status**: GREEN
+**Files changed**: src/autopilot.js (bank protection), src/vehicle.js (crash latch), bridge/server.mjs (crash STATUSTEXT), tests/{autopilot,nav-loop}.test.mjs
+**Tests**: unit 94/94 · JS coverage 100% · gcs PASS · HILS 7/7 · browser PASS · E2E 풀미션 정상완주(오탐 없음)
+**Decisions**: 사용자 화면에서 롤 −145°(뒤집힘)로 지상에서 나뒹구는 상태. 다중 재현(촘촘 웨이포인트, 8분 loiter, 난류×3)으로는 현행 코드에서 롤오버 재현 불가 → 잠재 불안정 2개를 방어적으로 차단:
+1. **협조선회 러더가 tan(roll)** 이라 뱅크 90° 근처에서 지령 폭발 → 나선 회복불가. 수정: rCmd의 tan 인자를 ±0.8 rad로 클램프 + |roll|>55°(0.95 rad) 시 heading 추종 포기하고 wings-level 우선. 검증: 인위적 60/75/90/110° 뱅크에서 1초 내 회복(추락 없음).
+2. **crash 감지 래치**: WoW + |roll|>34° 또는 |pitch|>29° 접지(정상 착륙이 만들 수 없는 자세) → crashed 래치(disarm+중립, AUTO 지상활주 재시도 억제). 이전에 사용자가 물었던 "박고도 다시 이륙" 갭 해소. STATUSTEXT "CRASH DETECTED"(CRITICAL) + telemetry crash 플래그. reset로만 해제.
+- 주의: 이 crashed 상태는 실기 GCS 관례대로 하드웨어 스위치 개념(진값 WoW+자세)으로만 트리거 — 제어경로의 추정치는 무관.
+**Notes**:
+- 사용자 화면이 stale일 가능성 큼(git pull + 브리지 완전 재시작 + R로 리셋 필요). 현행 코드는 전 재현에서 롤오버 없음.

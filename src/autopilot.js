@@ -56,12 +56,16 @@ export function holdControls(state, targetAlt, targetHeading, throttleOverride =
     hdgCmd -= (Math.asin(clamp(wCross / V, -0.6, 0.6)) * 180) / Math.PI;
   }
   const hdgErr = headingErrorDeg(hdgCmd, headingDeg(e.yaw));
-  const bankT = clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
+  // Bank-angle protection: past ~55° the aircraft is over-banked — abandon heading
+  // tracking and roll wings-level (an upright control law cannot recover a spiral).
+  const overBank = Math.abs(e.roll) > 0.95;
+  const bankT = overBank ? 0 : clamp(hdgErr * P.AP_HDG_P, -P.AP_BANK_MAX, P.AP_BANK_MAX);
   const aileron = clamp(P.AP_ROLL_KP * (bankT - e.roll) - P.AP_ROLL_KD * p, -1, 1);
   // Coordinated turn: track the turn's kinematic yaw rate, damp the rest — plus a
-  // rudder roll-assist through the dihedral (yaw→β→Clβ) path. The assist is what
-  // keeps the aircraft controllable when the aileron servo is jammed/floating.
-  const rCmd = (G / V) * Math.tan(e.roll);
+  // rudder roll-assist through the dihedral (yaw→β→Clβ) path. tan(roll) explodes
+  // near 90°, so clamp the bank it sees to keep the rudder command bounded (an
+  // unbounded rudder drives a spiral it can't get out of).
+  const rCmd = overBank ? 0 : (G / V) * Math.tan(clamp(e.roll, -0.8, 0.8));
   const rudder = clamp(-P.AP_YAW_KD * (rCmd - r) - P.AP_RUD_ROLL * (bankT - e.roll), -1, 1);
 
   const climbT = clamp((targetAlt - state.pos[1]) * P.AP_ALT_P, -P.AP_SINK_MAX, P.AP_CLIMB_MAX);
