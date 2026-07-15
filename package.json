@@ -14,6 +14,7 @@
     "plant": "node bridge/plant.mjs",
     "check:plant": "node tests/plant-check.mjs",
     "sitl": "node bridge/sitl.mjs",
-    "check:sitl": "node tests/sitl-check.mjs"
+    "check:sitl": "node tests/sitl-check.mjs",
+    "coverage": "node tests/coverage-check.mjs"
   }
 }

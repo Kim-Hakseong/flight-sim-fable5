@@ -449,3 +449,16 @@
 - Optional: FMI 3.0 variant; close specific DO-331 gaps on demand (structural coverage tooling, MISRA-C static analysis) per a target DAL; re-verify MARKET.md §5 unverified items after limit reset; local QGC visual pass.
 **Notes**:
 - Log.md was already current through M25; this entry adds the DO-331 work plus a scannable M0–M25 roll-up so the 25-milestone history reads at a glance.
+
+## 2026-07-15 — M26: structural coverage (closes DO-331 §6 gap #2, partial)
+
+**Status**: GREEN
+**Files changed**: native/{cov-driver.c,coverage.sh,Makefile,.gitignore}, tests/coverage-check.mjs, package.json, .github/workflows/ci.yml, COMPLIANCE-DO331.md
+**Tests**: **C core fdm.c = 100% line (210/210)** · JS model modules = 100% line (physics/wind/estimator/sensors/autopilot/missions/params/battery/prng) · unit 89/89 · all prior gates green
+**Decisions**:
+- Closed the highest-value honest gap from COMPLIANCE-DO331.md §6 (#2 structural coverage) using only toolchain-native tools (gcc/clang gcov, node built-in --experimental-test-coverage) — no new deps, per the lean constitution.
+- C deployable core: golden-check reached 93.3%; the shortfall was the wrapper-facing API (fdm_euler/fdm_rates_frd, exercised only via the FMU) + the null-env wind fallback. Added cov-driver.c (assertion-backed, not a line-toucher) to exercise them directly → combined 100%. coverage.sh is portable (gcc gcov / clang llvm-cov gcov), gates at 100%.
+- JS reference model: tests/coverage-check.mjs runs node coverage over *.test.mjs only (the *-check/-run scripts spawn servers), asserts per-module line floors. Model math modules all 100%; telemetry/vehicle floors set to measured reality (85/95) with the shortfall documented as browser-only I/O, not model code — honest floors that still catch regressions.
+- Wired: `npm run coverage`, `make -C native coverage`, both added to CI. COMPLIANCE-DO331.md updated: MB.A-5 gains a structural-coverage row (E), MB.A-7 line-coverage → E / MC-DC → P, §5 evidence + §6 gap #2 rewritten honestly (line covered+gated; MC/DC still needs a dedicated tool for DAL A).
+**Next**:
+- Remaining DO-331 gaps are the ones needing commercial tools/process (DO-330 tool qual, MC/DC via VectorCAST/LDRA, verification independence, formal CM) — close per a target DAL when a real cert engagement defines it.

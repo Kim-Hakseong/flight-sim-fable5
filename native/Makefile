@@ -35,6 +35,9 @@ fmu: fmu-so
 fmu-check: fmu-so
 	node fmi-check.mjs
 
+coverage: cov-driver.c golden-check.c fdm.c fdm.h golden.h
+	sh coverage.sh 100
+
 so: libfdm.so
 libfdm.so: fdm.c fdm.h
 	$(CC) $(CFLAGS) -fPIC -shared -o $@ fdm.c $(LDLIBS)
@@ -43,4 +46,4 @@ clean:
 	rm -f golden-check libfdm.so nivs-check.o $(MODEL).fmu
 	rm -rf fmu-build
 
-.PHONY: golden so nivs spec fmu fmu-so fmu-check clean
+.PHONY: golden so nivs spec fmu fmu-so fmu-check coverage clean

@@ -4,3 +4,9 @@ nivs-check.o
 fmi-driver
 fmu-build/
 *.fmu
+cov-golden
+cov-driver
+*.gcda
+*.gcno
+*.gcov
+*.o
