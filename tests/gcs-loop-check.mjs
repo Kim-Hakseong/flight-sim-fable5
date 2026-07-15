@@ -6,6 +6,8 @@ import dgram from 'node:dgram';
 import { fileURLToPath } from 'node:url';
 import { decode, encode } from '../bridge/mavlink.mjs';
 import { PARAM_DEFS } from '../src/params.js';
+import { COMPAT_PARAMS } from '../bridge/compat-params.mjs';
+const PARAM_TOTAL = PARAM_DEFS.length + COMPAT_PARAMS.size;
 
 const BRIDGE = fileURLToPath(new URL('../bridge/server.mjs', import.meta.url));
 
@@ -206,8 +208,9 @@ try {
   gcs.on('message', collectParams);
   await sendToBridge('PARAM_REQUEST_LIST', { target_system: 1, target_component: 1 });
   await new Promise((r) => setTimeout(r, 500));
-  check(paramValues.length === PARAM_DEFS.length, `PARAM_REQUEST_LIST → all ${PARAM_DEFS.length} PARAM_VALUEs (got ${paramValues.length})`);
-  check(paramValues.every((p) => p.param_count === PARAM_DEFS.length), 'PARAM_VALUE.param_count consistent');
+  check(paramValues.length === PARAM_TOTAL, `PARAM_REQUEST_LIST → all ${PARAM_TOTAL} PARAM_VALUEs incl. QGC compat stubs (got ${paramValues.length})`);
+  check(paramValues.every((p) => p.param_count === PARAM_TOTAL), 'PARAM_VALUE.param_count consistent');
+  check(paramValues.some((p) => p.param_id === 'RCMAP_ROLL' && p.param_value === 1), 'QGC compat stub (RCMAP_ROLL) served');
 
   paramValues.length = 0;
   await sendToBridge('PARAM_REQUEST_READ', { param_index: -1, target_system: 1, target_component: 1, param_id: 'AP_VA_TRIM' });

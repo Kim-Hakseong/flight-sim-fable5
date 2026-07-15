@@ -531,3 +531,14 @@
 - NIVS wrapper는 기본 airframe 고정(파라미터 경로는 FMU) — 한계로 명시.
 **Next**:
 - 사용자 QGC 테스트 결과 대기; VeriStand 실물 [확인점] 회신 시 반영. Backlog: crash-detection latch, NIVS parameter table.
+
+## 2026-07-15 — QGC 실테스트 피드백: Vehicle Setup 파라미터 팝업 해소
+
+**Status**: GREEN
+**Files changed**: bridge/compat-params.mjs (new), bridge/server.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 89/89 · gcs-loop-check PASS (73 params = 실파라미터 50 + compat 스텁 23종/35항목, RCMAP 스텁 서빙 검증)
+**Decisions**:
+- 사용자의 첫 QGC 실테스트에서 Vehicle Setup 진입 시 "펌웨어로부터 파라미터를 찾을 수 없습니다" 팝업 (RCMAP_*/COMPASS_*/FLTMODE*/ARMING_CHECK 등). 원인: HEARTBEAT가 ArduPilot을 선언(모드명 표시용 의도적 선택)하므로 QGC 설정 화면이 표준 ArduPilot 파라미터를 조회 — 비행/미션에는 무해하나 데모 품질 저하.
+- 해소: bridge/compat-params.mjs — QGC 전용 호환 스텁(RCMAP 1..4, RC1..8 MIN/MAX/TRIM, FLTMODE1..6=우리 모드 번호, COMPASS/INS 캘리브레이션 0, BATT_MONITOR=4, ARMING_CHECK=1). **브리지에서만 응답·저장하고 심으로는 절대 전달 안 함** — 모델의 실제 파라미터 테이블(src/params.js)은 오염 없이 유지. param_count는 실+스텁 합계로 일관.
+**Notes**:
+- 사용자는 `npm run bridge` 재시작 + QGC 재연결로 팝업 소멸 확인 가능. Setup의 '라디오' 빨간 표시는 RC 캘리브레이션 미수행 표시로 남을 수 있으나 Arm/비행에는 영향 없음(심이 arming 권위).

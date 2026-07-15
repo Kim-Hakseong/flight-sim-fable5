@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { encode, decode } from './mavlink.mjs';
 import { PARAM_DEFS, PARAM_TYPE_REAL32, defaultParams, clampParam } from '../src/params.js';
 import { MODE_NAMES } from '../src/autopilot.js';
+import { COMPAT_PARAMS } from './compat-params.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const HTTP_PORT = Number(process.env.BRIDGE_HTTP_PORT ?? 8765);
@@ -92,15 +93,26 @@ function handleCommandInt(f) {
 
 // --- Parameter protocol (shared table; the sim re-tunes live via SSE) ----------
 const params = defaultParams();
+const compat = new Map(COMPAT_PARAMS); // QGC-facing stubs; never forwarded to the sim
+const PARAM_TOTAL = PARAM_DEFS.length + compat.size;
+const compatIndex = (id) => PARAM_DEFS.length + [...compat.keys()].indexOf(id);
 
 function sendParamValue(id, index = PARAM_DEFS.findIndex((p) => p.id === id)) {
+  const isCompat = compat.has(id);
   sendMsg('PARAM_VALUE', {
-    param_value: params[id], param_count: PARAM_DEFS.length, param_index: index,
+    param_value: isCompat ? compat.get(id) : params[id],
+    param_count: PARAM_TOTAL,
+    param_index: isCompat ? compatIndex(id) : index,
     param_id: id, param_type: PARAM_TYPE_REAL32,
   });
 }
 
 function handleParamSet(f) {
+  if (compat.has(f.param_id)) { // QGC setup-page writes: accept + echo, keep local
+    compat.set(f.param_id, f.param_value);
+    sendParamValue(f.param_id);
+    return;
+  }
   const clamped = clampParam(f.param_id, f.param_value);
   if (clamped === null) return; // unknown id: silence (QGC will time out its widget)
   params[f.param_id] = clamped;
@@ -205,11 +217,16 @@ udp.on('message', (buf, rinfo) => {
     }
     case 'PARAM_REQUEST_LIST':
       PARAM_DEFS.forEach((p, i) => sendParamValue(p.id, i));
+      for (const id of compat.keys()) sendParamValue(id);
       break;
     case 'PARAM_REQUEST_READ': {
-      const byIndex = f.param_index >= 0 ? PARAM_DEFS[f.param_index]?.id : null;
-      const id = byIndex ?? f.param_id;
-      if (id in params) sendParamValue(id);
+      let id = f.param_id;
+      if (f.param_index >= 0) {
+        id = f.param_index < PARAM_DEFS.length
+          ? PARAM_DEFS[f.param_index]?.id
+          : [...compat.keys()][f.param_index - PARAM_DEFS.length];
+      }
+      if (id && (id in params || compat.has(id))) sendParamValue(id);
       break;
     }
     case 'PARAM_SET':
