@@ -476,3 +476,13 @@
 - COMPLIANCE-DO331.md updated honestly: MB.A-7 MC/DC → E* (measured+gated, but the * flags that gcc's tool is not DO-330-qualified, so no cert credit); §5 gains the MC/DC evidence + the L71 justification; §6 gap #2 rewritten — the remaining gap is tool QUALIFICATION (DO-330), not measurement.
 **Next**:
 - Remaining DO-331 gaps are process/qualification-bound (DO-330 tool qual, verification independence, formal CM, requirements-mgmt tooling) — close per a real cert engagement's target DAL.
+
+## 2026-07-15 — docs: README rewrite (plant-model deliverables + verification)
+
+**Status**: GREEN
+**Files changed**: README.md
+**Tests**: no code change (docs)
+**Decisions**:
+- README was badly stale ("M0 — not started" at M27). Full rewrite for BOTH audiences (business/customer + developer), facts only — no strategy or company names (those stay in MARKET.md, not linked from the public README).
+- Structure: KR+EN overview → Deliverables table (FMU/.so/VeriStand wrapper/INTERFACE.md/C core) + model class + channel map → Verification & quality (golden cross-val, determinism, 100% line + 98.7% MC/DC, DO-331 mapping, CI gates) → simulator/HILS capabilities → run/build commands → layout → documents → an explicit scope-and-honesty section.
+- All referenced files, npm scripts, make targets, and the 89-unit-test count verified against the repo before commit.
