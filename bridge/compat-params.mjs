@@ -28,6 +28,12 @@ export const COMPAT_PARAMS = new Map(Object.entries({
   INS_GYROFFS_X: 0, INS_GYROFFS_Y: 0, INS_GYROFFS_Z: 0,
   INS_ACCOFFS_X: 0.021, INS_ACCOFFS_Y: -0.013, INS_ACCOFFS_Z: 0.045,
   INS_ACCSCAL_X: 1.001, INS_ACCSCAL_Y: 0.999, INS_ACCSCAL_Z: 1.002,
+  // Newer-firmware calibration checks: sensor IDs + calibration temperatures
+  // (-300 = uncalibrated sentinel; a plausible temp = calibrated)
+  INS_ACC_ID: 1442082, INS_ACC2_ID: 0, INS_ACC3_ID: 0,
+  INS_ACC1_CALTEMP: 34.5, INS_ACC2_CALTEMP: -300, INS_ACC3_CALTEMP: -300,
+  INS_GYR_ID: 2098184, INS_GYR2_ID: 0, INS_GYR3_ID: 0,
+  INS_GYR1_CALTEMP: 34.5, INS_GYR2_CALTEMP: -300, INS_GYR3_CALTEMP: -300,
   // Battery + arming
   BATT_MONITOR: 4, ARMING_CHECK: 1,
 }));
