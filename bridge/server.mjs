@@ -68,6 +68,14 @@ function handleCommandLong(f) {
     case 20: // MAV_CMD_NAV_RETURN_TO_LAUNCH
       pushCommand({ type: 'rtl' });
       return MAV_RESULT_ACCEPTED;
+    case 176: // MAV_CMD_DO_SET_MODE — newer QGC sends mode changes this way
+      // (param1 = base_mode flags, param2 = custom_mode when CUSTOM_MODE_ENABLED)
+      pushCommand({ type: 'mode', custom: f.param2 >>> 0 });
+      return MAV_RESULT_ACCEPTED;
+    case 193: // MAV_CMD_DO_PAUSE_CONTINUE — QGC pause/continue button
+      // pause (param1=0) → LOITER hold-here; continue (param1=1) → resume AUTO
+      pushCommand({ type: 'mode', custom: f.param1 < 0.5 ? 12 : 10 });
+      return MAV_RESULT_ACCEPTED;
     case 192: // MAV_CMD_DO_REPOSITION (COMMAND_LONG form: params 5/6/7 = lat/lon/alt)
       pushCommand({ type: 'goto', lat: f.param5, lon: f.param6, alt: f.param7 });
       return MAV_RESULT_ACCEPTED;

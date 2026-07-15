@@ -135,6 +135,16 @@ try {
   check(modeEvt?.custom === 15, 'SET_MODE(GUIDED) relayed to the sim over SSE');
 
   received.delete('COMMAND_ACK');
+  await sendToBridge('COMMAND_LONG', { // newer QGC mode-change path (RTL button)
+    param1: 81, param2: 11, param3: 0, param4: 0, param5: 0, param6: 0, param7: 0,
+    command: 176, target_system: 1, target_component: 1, confirmation: 0,
+  });
+  const dsmAck = await waitFor('COMMAND_ACK');
+  check(dsmAck?.fields.command === 176 && dsmAck.fields.result === 0, 'DO_SET_MODE → ACK(ACCEPTED)');
+  const dsmEvt = await sseWait((e) => e.type === 'mode' && e.custom === 11);
+  check(dsmEvt?.custom === 11, 'DO_SET_MODE(RTL) relayed to the sim over SSE');
+
+  received.delete('COMMAND_ACK');
   await sendToBridge('COMMAND_LONG', {
     param1: 0, param2: 0, param3: 0, param4: 0, param5: 0, param6: 0, param7: 0,
     command: 4242, target_system: 1, target_component: 1, confirmation: 0,
