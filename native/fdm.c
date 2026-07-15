@@ -114,7 +114,9 @@ void fdm_forces_moments(const fdm_state *s, const fdm_coef *coef,
   double Va, alpha, beta;
   fdm_air_data(s->quat, s->vel, wind, &Va, &alpha, &beta);
   double rho = fdm_air_density(s->pos[1]);
-  double qbar = 0.5 * rho * Va * Va;
+  /* Low-airspeed aero fade — mirrors src/physics.js (parked-gust weathervane fix). */
+  double aeroFade = clampd((Va - 4.0) / 3.0, 0.0, 1.0);
+  double qbar = 0.5 * rho * Va * Va * aeroFade;
   double frd[3];
   to_frd(s->omega, frd);
   double p = frd[0], q = frd[1], r = frd[2];
@@ -267,7 +269,9 @@ void fdm_step(fdm_state *s, const fdm_coef *coef, const fdm_cmds *c,
     double roll = asin(clampd(-right[1], -1.0, 1.0));
     double pitch = asin(clampd(nose[1], -1.0, 1.0));
     double kp = 6.0 * dt; if (kp > 1.0) kp = 1.0;
-    double kr = 1.5 * dt; if (kr > 1.0) kr = 1.0;
+    /* Tire yaw friction stiffens as the wheels stop rolling (parked = held still). */
+    double gsr = gs / 5.0; if (gsr > 1.0) gsr = 1.0;
+    double kr = (1.5 + 6.0 * (1.0 - gsr)) * dt; if (kr > 1.0) kr = 1.0;
     double pNew = p * (1.0 - kp) - roll * 4.0 * dt;
     double qNew = (pitch < -0.02 && q < 0.0) ? 0.0 : q;
     double gfrd[3] = { pNew, qNew, r * (1.0 - kr) };

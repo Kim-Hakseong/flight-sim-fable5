@@ -102,7 +102,11 @@ export function airData(quat, vel, wind = [0, 0, 0]) {
 export function forcesMoments(quat, vel, omega, act, altM, wind = [0, 0, 0]) {
   const { Va, alpha, beta } = airData(quat, vel, wind);
   const rho = airDensity(altM);
-  const qbar = 0.5 * rho * Va * Va;
+  // Linear stability-derivative aero is invalid at near-zero airspeed (a parked
+  // gust gives β = ±90° and a bogus weathervane moment that spins the aircraft
+  // on its gear). Aero fades in between 4 and 7 m/s; ×1.0 above — flight untouched.
+  const aeroFade = Math.min(Math.max((Va - 4) / 3, 0), 1);
+  const qbar = 0.5 * rho * Va * Va * aeroFade;
   const [p, q, r] = toFRD(omega);
   const A = AC;
   const bV = Va > 1 ? A.b / (2 * Va) : 0;
@@ -208,7 +212,9 @@ export function stepAircraft(state, cmds, dt, wind = [0, 0, 0], actFaults = {}) 
     const pitch = Math.asin(Math.max(-1, Math.min(1, nose[1])));
     const pNew = p * (1 - Math.min(6 * dt, 1)) - roll * 4 * dt;
     const qNew = pitch < -0.02 ? Math.max(q, 0) : q; // nose can't dig through the ground
-    omega = fromFRD([pNew, qNew, r * (1 - Math.min(1.5 * dt, 1))]);
+    // Tire yaw friction stiffens as the wheels stop rolling (parked = held still).
+    const kYaw = 1.5 + 6 * (1 - Math.min(gs / 5, 1));
+    omega = fromFRD([pNew, qNew, r * (1 - Math.min(kYaw * dt, 1))]);
   }
   return { pos, vel, quat, omega, act };
 }
