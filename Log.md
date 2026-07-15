@@ -609,3 +609,10 @@
 **Files changed**: bridge/server.mjs, tests/gcs-loop-check.mjs (+ fdm-uav-gcs/backend 병행)
 **Tests**: unit 94/94 · gcs PASS(신규: guided MISSION_ITEM_INT(current=2) ACK+goto) · backend gcs-check PASS
 **Decisions**: 사용자 "미션 포인트 전송 실패: 기체가 미션 항목 통신 Guided Mode Item에 반응하지 않음". 모드는 이미 GUIDED(relayMode 정상). 원인: QGC "여기로 이동"이 목표점을 DO_REPOSITION이 아니라 **standalone MISSION_ITEM_INT with current==2(guided goto)** 로 보내고 MISSION_ACK를 기다리는데, 우리 onMissionItem은 업로드 핸드셰이크 중에만 반응(upload===null이면 무시) → 미응답. 수정: upload가 없고 current===2인 MISSION_ITEM_INT는 goto로 처리하고 MISSION_ACK(ACCEPTED) 회신. 브리지 + 헤드리스 백엔드 양쪽 적용.
+
+## 2026-07-15 — QGC 실테스트 피드백 9: guided go-to는 MISSION_ITEM(39) float — QGC 소스로 정확히 규명
+
+**Status**: GREEN
+**Files changed**: bridge/mavlink.mjs(+MISSION_ITEM 39), bridge/server.mjs, tests/{gcs-loop-check,mavlink}.test.mjs (+ fdm-uav-gcs/backend 병행)
+**Tests**: unit 94/94 · gcs PASS(신규: MISSION_ITEM current=2 float → ACK+goto) · HILS 7/7 · browser PASS · backend PASS
+**Decisions**: 피드백8 수정(MISSION_ITEM_INT current=2) 후에도 "Guided Mode Item 미응답" 지속. QGC 소스(MissionManager::writeArduPilotGuidedMissionItem) 직접 확인: ArduPilot guided go-to는 **구형 MISSION_ITEM(id 39, float 도 단위 좌표), current= altChangeOnly?3:2** 를 encode해 전송하고 MISSION_ACK를 기다림. 우리는 MISSION_ITEM(39)을 메시지 테이블에 없어 디코드조차 안 함 → 완전 무시 → 미응답. 수정: mavlink.mjs에 MISSION_ITEM(39, crc_extra 254) 추가(encode/decode 라운드트립 검증), 브리지/백엔드에서 current 2·3이면 goto(lat=x, lon=y 도 단위 그대로) + MISSION_ACK. 교훈: MAVLink 상대 구현은 추측 말고 QGC 소스로 확인.

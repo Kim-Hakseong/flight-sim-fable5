@@ -23,6 +23,7 @@ test('payload lengths match the MAVLink v1 spec', () => {
   assert.equal(payloadLength(MESSAGES.MISSION_REQUEST), 4);
   assert.equal(payloadLength(MESSAGES.MISSION_REQUEST_INT), 4);
   assert.equal(payloadLength(MESSAGES.MISSION_ITEM_INT), 37);
+  assert.equal(payloadLength(MESSAGES.MISSION_ITEM), 37);
   assert.equal(payloadLength(MESSAGES.MISSION_ACK), 3);
   assert.equal(payloadLength(MESSAGES.MISSION_CURRENT), 2);
   assert.equal(payloadLength(MESSAGES.MISSION_ITEM_REACHED), 2);
@@ -104,6 +105,7 @@ test('round-trip: every M1 message encodes → decodes with crcOk', () => {
     MISSION_COUNT: { count: 3, target_system: 1, target_component: 1 },
     MISSION_REQUEST_INT: { seq: 2, target_system: 1, target_component: 1 },
     MISSION_ITEM_INT: { param1: 0, param2: 60, param3: 0, param4: 0, x: 374569000, y: 1264796000, z: 120, seq: 1, command: 16, target_system: 1, target_component: 1, frame: 3, current: 0, autocontinue: 1 },
+    MISSION_ITEM: { param1: 0, param2: 0, param3: 0, param4: 0, x: 37.455, y: 126.472, z: 130, seq: 0, command: 16, target_system: 1, target_component: 1, frame: 6, current: 2, autocontinue: 1 },
     MISSION_ACK: { target_system: 255, target_component: 0, type: 0 },
     MISSION_CURRENT: { seq: 2 },
     MISSION_ITEM_REACHED: { seq: 1 },

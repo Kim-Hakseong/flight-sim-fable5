@@ -223,6 +223,12 @@ udp.on('message', (buf, rinfo) => {
     case 'MISSION_ITEM_INT':
       onMissionItem(f);
       break;
+    case 'MISSION_ITEM': // legacy float-coord item — QGC's ArduPilot guided go-to
+      if (f.current === 2 || f.current === 3) {
+        pushCommand({ type: 'goto', lat: f.x, lon: f.y, alt: f.z }); // x/y already degrees
+        sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
+      }
+      break;
     case 'MISSION_REQUEST_LIST': // GCS downloads our plan back
       sendMsg('MISSION_COUNT', { count: missionItems.length, target_system: 255, target_component: 0 });
       break;

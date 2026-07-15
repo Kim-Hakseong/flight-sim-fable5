@@ -127,6 +127,16 @@ export const MESSAGES = {
       ['hdg', 'uint16'],
     ],
   },
+  MISSION_ITEM: { // legacy float-coord item; QGC uses THIS for ArduPilot guided go-to
+    id: 39, crcExtra: 254,
+    fields: [
+      ['param1', 'float'], ['param2', 'float'], ['param3', 'float'], ['param4', 'float'],
+      ['x', 'float'], ['y', 'float'], ['z', 'float'], // x=lat, y=lon in DEGREES (not 1e7)
+      ['seq', 'uint16'], ['command', 'uint16'],
+      ['target_system', 'uint8'], ['target_component', 'uint8'], ['frame', 'uint8'],
+      ['current', 'uint8'], ['autocontinue', 'uint8'],
+    ],
+  },
   MISSION_REQUEST: {
     id: 40, crcExtra: 230,
     fields: [['seq', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
