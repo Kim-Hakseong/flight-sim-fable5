@@ -507,3 +507,12 @@
 - README를 한국어 중심으로 재작성 (최상단에 영문 한 줄 요약만 유지). 구성은 동일: 개요 → 납품물 → 검증·품질 → 시뮬레이터 기능 → 실행·빌드 → 구조 → 문서 → 범위와 정직성.
 - 사용자 지적 반영: "가짜 비행기" 표현 제거 → "조종면 명령에 실제 항공기처럼 응답하는 **모의 비행체 — 플랜트 모델**"로 교체.
 - M28 산출물(채널 모니터 C키, hilspanel) 반영. 전략·회사명은 계속 미노출 (MARKET.md 비링크 유지).
+
+## 2026-07-15 — docs: README 용어 정비 (한국어 설명 + 실무 영어 용어)
+
+**Status**: GREEN
+**Files changed**: README.md, Log.md
+**Tests**: 문서만 변경
+**Decisions**:
+- 사용자 피드백: 방산·항공 실무에서 영어로 통용되는 용어의 억지 한글화가 오히려 거부감을 준다 → 원칙 확정: **설명 문장은 한국어, 기술 용어·소제목은 실무 영어 그대로**. (6자유도→6-DOF, 연속 루프 폐쇄→SLC, 안정성 증강→SAS, 고장 주입→fault injection, 고착/유동/저속→jam/floating/slow, 접지 스위치→WoW, 결정론적→deterministic, 락스텝→lockstep 등)
+- 섹션 제목도 영어 관례로 (Deliverables / Verification & Quality / Simulator & HILS Capabilities / Run & Build / Scope & Honesty).
