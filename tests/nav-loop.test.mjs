@@ -73,6 +73,23 @@ test('estimated nav: cold ground takeoff — the whole real-vehicle flow', () =>
   assert.ok(Math.abs(v.state.pos[1] - 60) < 20, `alt ${v.state.pos[1]}`);
 });
 
+test('estimated nav: AUTO started on the runway ground-rolls, lifts off, flies the mission', () => {
+  let v = createVehicle({ boot: 'ground', sensorSeed: 21, windSeed: 22 });
+  v = vehicleCommand(v, PLAN_CMD);
+  v = vehicleCommand(v, { type: 'arm', value: 1 });
+  v = vehicleCommand(v, { type: 'mode', custom: MODES.AUTO });
+  let lifted = false;
+  let maxYawRate = 0;
+  for (let i = 0; i < 300 * 60 && v.lastReached < 0; i++) {
+    v = vehicleStep(v, DT);
+    if (v.state.pos[1] > 1) lifted = true;
+    if (!lifted && i > 60) maxYawRate = Math.max(maxYawRate, Math.abs(v.state.omega[1]));
+  }
+  assert.ok(maxYawRate < 0.6, `ground-spins instead of rolling (yaw rate ${maxYawRate})`);
+  assert.ok(lifted, 'never lifted off in AUTO');
+  assert.ok(v.lastReached >= 0, 'never reached WP1');
+});
+
 test('determinism: the full closed loop is bit-identical across reruns', () => {
   const fly = () => {
     let v = createVehicle({ boot: 'air', sensorSeed: 21, windSeed: 22 });

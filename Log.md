@@ -542,3 +542,13 @@
 - 해소: bridge/compat-params.mjs — QGC 전용 호환 스텁(RCMAP 1..4, RC1..8 MIN/MAX/TRIM, FLTMODE1..6=우리 모드 번호, COMPASS/INS 캘리브레이션 0, BATT_MONITOR=4, ARMING_CHECK=1). **브리지에서만 응답·저장하고 심으로는 절대 전달 안 함** — 모델의 실제 파라미터 테이블(src/params.js)은 오염 없이 유지. param_count는 실+스텁 합계로 일관.
 **Notes**:
 - 사용자는 `npm run bridge` 재시작 + QGC 재연결로 팝업 소멸 확인 가능. Setup의 '라디오' 빨간 표시는 RC 캘리브레이션 미수행 표시로 남을 수 있으나 Arm/비행에는 영향 없음(심이 arming 권위).
+
+## 2026-07-15 — QGC 실테스트 피드백 2: AUTO 지상 시작 시 제자리 회전 수정
+
+**Status**: GREEN
+**Files changed**: src/autopilot.js, tests/nav-loop.test.mjs
+**Tests**: unit 90/90 (신규: AUTO runway start — ground-roll/이륙/WP1 도달 + yaw-rate 스핀 가드) · HILS 7/7 · gcs PASS
+**Decisions**:
+- 사용자 실테스트에서 발견: 지상에서 AUTO 진입 시 첫 WP 방향으로 러더만 꺾어 제자리 회전(실 ArduPlane은 미션 이륙을 수행). 원인: AUTO 분기에 지상활주 로직 부재.
+- 수정: TAKEOFF의 지상활주를 groundRollControls() 헬퍼로 추출, AUTO에서 WoW+저속이면 동일 지상활주(진입 시 캡처된 활주로 헤딩 유지, Vr 로테이션) 후 웨이포인트 로직 인계.
+- 부차 확인: T 키(TAKEOFF)는 설계상 상승 후 GUIDED-hold로 전환 — 미션 시작은 별도로 AUTO 선택 필요(실기와 동일). 사용자 안내로 해소.

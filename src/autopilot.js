@@ -86,6 +86,23 @@ export function manualControls(state, stick) {
   };
 }
 
+// Ground roll: full power, rudder steers the given heading, wings held level;
+// rotate (elevator up) once the pitot reaches Vr. Used by TAKEOFF mode and by
+// AUTO when a mission is started from the runway (real ArduPlane behavior —
+// without this, AUTO on the ground just rudder-spins toward the first waypoint).
+function groundRollControls(state, targetHeading, va) {
+  const e = eulerFromQuat(state.quat);
+  const [p, , r] = toFRD(state.omega);
+  const hdgErr = headingErrorDeg(targetHeading, headingDeg(e.yaw));
+  const speed = va ?? Math.hypot(state.vel[0], state.vel[2]);
+  return {
+    aileron: clamp(-1.5 * e.roll - 0.2 * p, -1, 1),
+    elevator: speed >= TAKEOFF_VR_MS ? clamp(DE_TRIM - 0.45, -1, 1) : DE_TRIM,
+    rudder: clamp(-0.04 * hdgErr + 0.8 * r, -1, 1),
+    throttle: 1,
+  };
+}
+
 // One guidance step. ap: { mode, landing, targetAlt, targetHeading,
 // guided: {x,z,alt}|null, mission: {targets,idx}|null }.
 // Returns { controls, ap, disarm, reached } — ap may transition (pure: fresh object).
@@ -116,18 +133,7 @@ export function apStep(state, ap, P = DP, va = null) {
         break;
       }
       if (state.wow ?? state.pos[1] <= 0.5) {
-        // Ground roll: full power, rudder steers the centerline heading, wings
-        // held level; rotate (elevator up) once the pitot reaches Vr.
-        const e = eulerFromQuat(state.quat);
-        const [p, , r] = toFRD(state.omega);
-        const hdgErr = headingErrorDeg(ap.targetHeading, headingDeg(e.yaw));
-        const speed = va ?? Math.hypot(state.vel[0], state.vel[2]);
-        return out({
-          aileron: clamp(-1.5 * e.roll - 0.2 * p, -1, 1),
-          elevator: speed >= TAKEOFF_VR_MS ? clamp(DE_TRIM - 0.45, -1, 1) : DE_TRIM,
-          rudder: clamp(-0.04 * hdgErr + 0.8 * r, -1, 1),
-          throttle: 1,
-        }, ap);
+        return out(groundRollControls(state, ap.targetHeading, va), ap);
       }
       return out(holdControls(state, ap.targetAlt, ap.targetHeading, 1, P, va), ap);
     }
@@ -143,6 +149,11 @@ export function apStep(state, ap, P = DP, va = null) {
     }
     case MODES.AUTO: {
       if (!ap.mission) break; // no plan yet: hold
+      if ((state.wow ?? state.pos[1] <= 0.5) && Math.hypot(state.vel[0], state.vel[2]) < TAKEOFF_VR_MS + 5) {
+        // Mission started from the runway: ground-roll takeoff straight ahead on
+        // the heading captured at mode entry, then the waypoint logic takes over.
+        return out(groundRollControls(state, ap.targetHeading, va), ap);
+      }
       const ms = missionStep(state.pos, ap.mission);
       next = { ...ap, mission: ms.mission };
       stepReached = ms.reached;
