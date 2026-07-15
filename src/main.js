@@ -16,6 +16,7 @@ import { startTelemetry } from './telemetry.js';
 import { startMissionLink } from './missionLink.js';
 import { createWorld } from './scene.js';
 import { createEngineering } from './engineering.js';
+import { createHilsPanel } from './hilspanel.js';
 import { SCENARIOS, runScenario } from './hils.js';
 
 const THREE = window.THREE;
@@ -126,6 +127,9 @@ const eng = createEngineering({
 });
 window.__eng = eng; // DOM-gate hook for the browser check
 
+// HILS-delivery overlay: badge + channel monitor (KeyC) + scenario toggles.
+const hils = createHilsPanel({ getVehicle: () => veh });
+
 function render() {
   const { state, ap, armed, simTime } = veh;
   world.update(state, simTime);
@@ -141,6 +145,7 @@ function render() {
     `\n${armed ? 'ARMED' : 'DISARMED'} · ${modeLabel}`;
 
   eng.render();
+  hils.render();
   renderer.render(world.scene, world.camera);
 }
 

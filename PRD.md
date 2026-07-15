@@ -209,6 +209,15 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   loads modelDescription.xml, drives the built .so through fmi2 calls, and matches
   a JS golden trajectory (turbulence off) within trajectory tolerance.
 
+- **M28 — HILS-delivery demo overlay.** Make the browser demo SHOW the deliverable:
+  (a) a model-identity badge (fdm-uav · FMI 2.0/VeriStand · 60 Hz fixed-step ·
+  deterministic · golden-validated), (b) a live CHANNEL MONITOR (KeyC) rendering the
+  exact delivered channel map — names/values as VeriStand would see them, loaded from
+  native/channels.json (single source of truth), and (c) one-click fault-scenario
+  toggles (GPS dropout, gyro/mag bias, pitot drop, servo jam/slow, heavy turbulence,
+  clear-all) driving the same injection surfaces as tests. Render-only.
+  *Verify:* console-0, DOM gate covers the new panel, determinism untouched.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

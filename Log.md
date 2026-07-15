@@ -486,3 +486,14 @@
 - README was badly stale ("M0 — not started" at M27). Full rewrite for BOTH audiences (business/customer + developer), facts only — no strategy or company names (those stay in MARKET.md, not linked from the public README).
 - Structure: KR+EN overview → Deliverables table (FMU/.so/VeriStand wrapper/INTERFACE.md/C core) + model class + channel map → Verification & quality (golden cross-val, determinism, 100% line + 98.7% MC/DC, DO-331 mapping, CI gates) → simulator/HILS capabilities → run/build commands → layout → documents → an explicit scope-and-honesty section.
 - All referenced files, npm scripts, make targets, and the 89-unit-test count verified against the repo before commit.
+
+## 2026-07-15 — M28: HILS-delivery demo overlay
+
+**Status**: GREEN
+**Files changed**: PRD.md, src/hilspanel.js (new), src/main.js, index.html, tests/browser-check.mjs
+**Tests**: unit 89/89 · browser PASS (DOM gate extended: badge + 8 scenario buttons + 32 channel rows) · determinism ✓ · render-only
+**Decisions**:
+- The demo now SHOWS the deliverable: (a) model-identity badge (fdm-uav · FMI 2.0/VeriStand/.so · 60 Hz fixed-step · deterministic · golden-validated), placed above the scenario bar (top-center collided with the HUD at narrow widths); (b) CHANNEL MONITOR (KeyC) rendering the exact delivered channel map — fetched from native/channels.json (the same single source of truth as the FMU/VeriStand wrappers), values computed with the wrappers' NED/FRD mapping, 10 Hz DOM updates; (c) one-click fault-scenario toggles (GPS/pitot dropout, gyro/mag bias, aileron jam, elevator slow, turb ×2.5, clear-all) driving the SAME injection surfaces as the tests — button state reads back from the vehicle so it can't lie.
+- browser-check DOM gate extended to cover all three elements; channel monitor is opened before the screenshot so the CI artifact shows the delivery view.
+**Next**:
+- (idle) Backlog: DO-330-bound gaps per a real cert engagement; FMI 3.0 variant; QGC visual pass.

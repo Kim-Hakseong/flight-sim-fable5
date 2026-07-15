@@ -134,9 +134,15 @@ try {
     const buttons = eng ? eng.querySelectorAll('button').length : 0;
     window.__eng.toggle();
     const open = eng?.classList.contains('open');
-    return { exists: !!eng, canvases, buttons, open };
+    const badge = !!document.getElementById('hilsbadge');
+    const scn = document.querySelectorAll('#scnbar button').length;
+    const cm = document.getElementById('chanmon');
+    cm?.classList.add('open'); // show the channel monitor in the screenshot
+    const chanRows = cm ? cm.querySelectorAll('tr').length : 0;
+    return { exists: !!eng, canvases, buttons, open, badge, scn, chanRows };
   })()`);
-  const domOk = dom.exists && dom.canvases >= 3 && dom.buttons >= 20 && dom.open;
+  const domOk = dom.exists && dom.canvases >= 3 && dom.buttons >= 20 && dom.open
+    && dom.badge && dom.scn >= 8 && dom.chanRows >= 30;
 
   // Screenshot artifact (UI gate: CLAUDE.md §0.4). __reset first so the frame is
   // canonical; the console stays open so the artifact shows the HILS bench too.
@@ -154,7 +160,7 @@ try {
   consoleErrors.forEach((e) => console.log(`  ✗ ${e}`));
   console.log(`__advance reproducible: ${det.match}`);
   console.log(`__advance + injectFault reproducible: ${det.faultMatch}`);
-  console.log(`engineering console DOM gate: ${domOk} (canvases ${dom.canvases}, buttons ${dom.buttons})`);
+  console.log(`DOM gate: ${domOk} (canvases ${dom.canvases}, eng buttons ${dom.buttons}, badge ${dom.badge}, scenario btns ${dom.scn}, channel rows ${dom.chanRows})`);
   console.log(`  state: ${det.sample}…`);
 
   if (consoleErrors.length > 0 || !det.match || !det.faultMatch || !domOk) failed = true;
