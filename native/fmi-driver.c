@@ -50,6 +50,11 @@ int main(int argc, char **argv) {
 
   /* case selects boot + command law, mirroring native/gen-golden trajectories. */
   int airborne = strcmp(scase, "ground_roll") != 0;
+  if (strcmp(scase, "heavy") == 0) { /* mass ×1.5 via the parameter vref (200) */
+    unsigned int pvr[1] = {200};
+    double pv[1] = {20.25};
+    f_set(c, pvr, 1, pv);
+  }
   unsigned int vr_reset[1] = {RESET};
   double reset_v[1] = { airborne ? 2.0 : 1.0 };
   f_set(c, vr_reset, 1, reset_v); /* rising edge on first step boots the mode */
@@ -60,7 +65,7 @@ int main(int argc, char **argv) {
     in[RESET] = airborne ? 2.0 : 1.0;
     if (strcmp(scase, "ground_roll") == 0) {
       in[CMD_E] = 0.0; in[CMD_T] = 1.0;
-    } else { /* trim_calm */
+    } else { /* trim_calm / heavy: same command law */
       in[CMD_E] = TRIM_ELEV; in[CMD_T] = TRIM_DT;
     }
     unsigned int vr[12];

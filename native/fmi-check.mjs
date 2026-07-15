@@ -58,6 +58,16 @@ const cases = [
 ];
 
 let failures = 0;
+// Parameter effect at the real ABI: mass ×1.5 with unchanged trim commands must
+// sink relative to the default airframe (less lift margin, same thrust).
+{
+  const def = JSON.parse(execFileSync(driver, [soPath, 'trim_calm', '15']).toString());
+  const heavy = JSON.parse(execFileSync(driver, [soPath, 'heavy', '15']).toString());
+  const dAlt = (-heavy.posD) - (-def.posD);
+  const ok = dAlt < -20;
+  console.log(`${ok ? 'ok ' : 'FAIL'} FMU parameter effect — mass ×1.5 sinks ${(-dAlt).toFixed(0)} m vs default over 15 s`);
+  if (!ok) failures++;
+}
 for (const c of cases) {
   const out = JSON.parse(execFileSync(driver, [soPath, c.name, String(c.seconds)]).toString());
   const ref = jsGolden(c.name, c.seconds);

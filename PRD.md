@@ -218,6 +218,19 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   clear-all) driving the same injection surfaces as tests. Render-only.
   *Verify:* console-0, DOM gate covers the new panel, determinism untouched.
 
+- **M29 — Airframe parameterization (model → model FRAME).** The aero database,
+  mass/inertia, prop, actuator and ground constants move from compile-time #defines
+  to an `fdm_coef` struct (defaults = the golden-validated Aerosonde set) exposed as
+  **FMI parameters** (vref 200+, generated from channels.json like everything else)
+  — a customer re-targets the model to their own Datcom/AVL-derived airframe with
+  NO recompilation. Golden validation stays pinned to the defaults (bit-identical:
+  proof the refactor didn't touch the math); parameter EFFECTS are verified
+  behaviorally (heavier aircraft sinks, etc.) at both the C API and the real fmi2
+  ABI. JS reference stays fixed-coefficient (documented). VeriStand-native wrapper
+  keeps defaults for now (FMU is the parameterized path).
+  *Verify:* golden bit-identical; struct↔channels.json order gated; fmi2SetReal on
+  a parameter changes the trajectory as physics dictates.
+
 ## 5. Non-goals
 
 Cockpit interiors, multiple maps, weather presets, multiplayer, AI traffic, game

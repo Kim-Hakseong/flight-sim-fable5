@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 const here = (p) => new URL(p, import.meta.url);
 const ch = JSON.parse(readFileSync(here('./channels.json')));
 const OUT_BASE = 100;
+const PARAM_BASE = 200;
 
 // --- consistency gate: C enum order must match channels.json ---------------------
 const csrc = readFileSync(here('./fmi2_model.c'), 'utf8');
@@ -50,6 +51,17 @@ if (JSON.stringify(outTokens) !== JSON.stringify(outEnum)) {
   process.exit(1);
 }
 
+// --- consistency gate 2: fdm_coef field order (fdm.h) must match "parameters" ----
+const hdr = readFileSync(here('./fdm.h'), 'utf8');
+const coefBlock = hdr.match(/typedef struct \{([^}]*)\} fdm_coef;/s)[1];
+const coefFields = [...coefBlock.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\b(?=[,;])/g)]
+  .map((m) => m[1]).filter((t) => t !== 'double');
+const paramNames = ch.parameters.map((p) => p.name);
+if (JSON.stringify(coefFields) !== JSON.stringify(paramNames)) {
+  console.error(`PARAMETER order mismatch:\n  fdm_coef: ${coefFields}\n  json:     ${paramNames}`);
+  process.exit(1);
+}
+
 // --- emit modelDescription.xml ---------------------------------------------------
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const scalar = (c, vr, causality, start) => {
@@ -64,6 +76,9 @@ const scalar = (c, vr, causality, start) => {
 const vars = [];
 ch.inports.forEach((c, i) => vars.push(scalar(c, i, 'input', c.name === 'Cmd_Throttle' ? 0 : 0)));
 ch.outports.forEach((c, i) => vars.push(scalar(c, OUT_BASE + i, 'output')));
+ch.parameters.forEach((c, i) => vars.push(
+  `    <ScalarVariable name="${c.name}" valueReference="${PARAM_BASE + i}" causality="parameter" variability="tunable" description="${esc(c.desc)}">\n      <Real start="${c.default}"/>\n    </ScalarVariable>`
+));
 const outputIdx = ch.outports.map((_, i) => `      <Unknown index="${ch.inports.length + i + 1}"/>`).join('\n');
 
 const guid = 'FDM-UAV-FMI2-' + ch.inports.length + 'x' + ch.outports.length;
@@ -94,7 +109,7 @@ ${outputIdx}
 
 mkdirSync(here('./fmu-build/binaries/linux64'), { recursive: true });
 writeFileSync(here('./fmu-build/modelDescription.xml'), xml);
-console.log(`modelDescription.xml: ${ch.inports.length} inputs, ${ch.outports.length} outputs (vref mapping verified vs fmi2_model.c)`);
+console.log(`modelDescription.xml: ${ch.inports.length} inputs, ${ch.outports.length} outputs, ${ch.parameters.length} parameters (vref + fdm_coef order verified)`);
 
 if (process.argv.includes('--pack')) {
   const so = here('./fmu-build/binaries/linux64/' + ch.model + '.so');

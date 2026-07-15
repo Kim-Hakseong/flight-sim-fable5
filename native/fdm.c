@@ -9,47 +9,31 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-/* --- Airframe constants (src/physics.js AC) -------------------------------- */
+/* --- Physical constants (Earth — not airframe) --------------------------------- */
 #define G_ACC 9.81
 #define RHO0 1.225
-#define MASS 13.5
-#define JX 0.8244
-#define JY 1.135
-#define JZ 1.759
-#define WS 0.55   /* wing area */
-#define WB 2.9    /* span */
-#define WC 0.19   /* chord */
-#define CL0 0.28
-#define CLA 3.45
-#define CLDE 0.36
-#define CD0 0.03
-#define KIND 0.0231
-#define CM0 (-0.02338)
-#define CMA (-0.38)
-#define CMQ (-3.6)
-#define CMDE (-0.5)
-#define CYB (-0.98)
-#define CYDR 0.19
-#define CLB (-0.12)
-#define CLP (-0.26)
-#define CLR 0.14
-#define CLDA 0.13
-#define CLDR 0.008
-#define CNB 0.25
-#define CNP 0.022
-#define CNR (-0.35)
-#define CNDA (-0.011)
-#define CNDR (-0.069)
-#define SPROP 0.2027
-#define CPROP 1.0
-#define KMOTOR 50.0
-#define MAX_THRUST_N 60.0
-#define MU_ROLL 0.03
-#define MU_BRAKE 0.22
-#define MAX_DEF 0.44
-#define ACT_TAU 0.05
-#define THR_TAU 0.4
-#define ALPHA_CLAMP 0.30
+
+/* Airframe defaults: the golden-validated Aerosonde-class set (src/physics.js AC).
+ * Field order MUST match fdm_coef in fdm.h and channels.json "parameters". */
+const fdm_coef FDM_COEF_DEFAULT = {
+  /* mass/inertia */ 13.5, 0.8244, 1.135, 1.759,
+  /* wing S,b,c  */ 0.55, 2.9, 0.19,
+  /* lift        */ 0.28, 3.45, 0.36,
+  /* drag        */ 0.03, 0.0231,
+  /* pitch mom.  */ -0.02338, -0.38, -3.6, -0.5,
+  /* side force  */ -0.98, 0.19,
+  /* roll mom.   */ -0.12, -0.26, 0.14, 0.13, 0.008,
+  /* yaw mom.    */ 0.25, 0.022, -0.35, -0.011, -0.069,
+  /* propulsion  */ 0.2027, 1.0, 50.0, 60.0,
+  /* ground      */ 0.03, 0.22,
+  /* actuators   */ 0.44, 0.05, 0.4, 0.30,
+};
+
+void fdm_coef_default(fdm_coef *out) { *out = FDM_COEF_DEFAULT; }
+
+static const fdm_coef *coef_or_default(const fdm_coef *coef) {
+  return coef ? coef : &FDM_COEF_DEFAULT;
+}
 
 const double FDM_TRIM_VA = 30.0, FDM_TRIM_ALPHA = 0.05566,
              FDM_TRIM_DE = -0.08906, FDM_TRIM_DT = 0.62747;
@@ -122,9 +106,11 @@ void fdm_air_data(const double quat[4], const double vel[3],
 }
 
 /* --- Forces + moments (FRD) ---------------------------------------------------- */
-void fdm_forces_moments(const fdm_state *s, const double wind[3],
+void fdm_forces_moments(const fdm_state *s, const fdm_coef *coef,
+                        const double wind[3],
                         double F[3], double M[3],
                         double *va_o, double *alpha_o, double *beta_o) {
+  const fdm_coef *A = coef_or_default(coef);
   double Va, alpha, beta;
   fdm_air_data(s->quat, s->vel, wind, &Va, &alpha, &beta);
   double rho = fdm_air_density(s->pos[1]);
@@ -132,22 +118,22 @@ void fdm_forces_moments(const fdm_state *s, const double wind[3],
   double frd[3];
   to_frd(s->omega, frd);
   double p = frd[0], q = frd[1], r = frd[2];
-  double bV = Va > 1.0 ? WB / (2.0 * Va) : 0.0;
-  double cV = Va > 1.0 ? WC / (2.0 * Va) : 0.0;
+  double bV = Va > 1.0 ? A->wingB / (2.0 * Va) : 0.0;
+  double cV = Va > 1.0 ? A->wingC / (2.0 * Va) : 0.0;
 
-  double aEff = clampd(alpha, -ALPHA_CLAMP, ALPHA_CLAMP);
-  double CL = CL0 + CLA * aEff + CLDE * s->act.de;
-  double CD = CD0 + KIND * CL * CL;
-  double lift = qbar * WS * CL;
-  double drag = qbar * WS * CD;
-  double fy = qbar * WS * (CYB * beta + CYDR * s->act.dr);
+  double aEff = clampd(alpha, -A->alphaClamp, A->alphaClamp);
+  double CL = A->CL0 + A->CLa * aEff + A->CLde * s->act.de;
+  double CD = A->CD0 + A->Kind * CL * CL;
+  double lift = qbar * A->wingS * CL;
+  double drag = qbar * A->wingS * CD;
+  double fy = qbar * A->wingS * (A->CYb * beta + A->CYdr * s->act.dr);
 
-  double thrust = 0.5 * fdm_air_density(s->pos[1]) * SPROP * CPROP *
-                  ((KMOTOR * s->act.dt) * (KMOTOR * s->act.dt) - Va * Va);
-  if (thrust > MAX_THRUST_N) thrust = MAX_THRUST_N;
+  double thrust = 0.5 * fdm_air_density(s->pos[1]) * A->sProp * A->cProp *
+                  ((A->kMotor * s->act.dt) * (A->kMotor * s->act.dt) - Va * Va);
+  if (thrust > A->maxThrustN) thrust = A->maxThrustN;
 
   double ca = cos(alpha), sa = sin(alpha);
-  double gw[3] = { 0.0, -MASS * G_ACC, 0.0 };
+  double gw[3] = { 0.0, -A->mass * G_ACC, 0.0 };
   double gb_ours[3], gB[3];
   quat_conj_rotate(s->quat, gw, gb_ours);
   to_frd(gb_ours, gB);
@@ -155,9 +141,9 @@ void fdm_forces_moments(const fdm_state *s, const double wind[3],
   F[0] = thrust - drag * ca + lift * sa + gB[0];
   F[1] = fy + gB[1];
   F[2] = -drag * sa - lift * ca + gB[2];
-  M[0] = qbar * WS * WB * (CLB * beta + CLP * bV * p + CLR * bV * r + CLDA * s->act.da + CLDR * s->act.dr);
-  M[1] = qbar * WS * WC * (CM0 + CMA * aEff + CMQ * cV * q + CMDE * s->act.de);
-  M[2] = qbar * WS * WB * (CNB * beta + CNP * bV * p + CNR * bV * r + CNDA * s->act.da + CNDR * s->act.dr);
+  M[0] = qbar * A->wingS * A->wingB * (A->Clb * beta + A->Clp * bV * p + A->Clr * bV * r + A->Clda * s->act.da + A->Cldr * s->act.dr);
+  M[1] = qbar * A->wingS * A->wingC * (A->Cm0 + A->Cma * aEff + A->Cmq * cV * q + A->Cmde * s->act.de);
+  M[2] = qbar * A->wingS * A->wingB * (A->Cnb * beta + A->Cnp * bV * p + A->Cnr * bV * r + A->Cnda * s->act.da + A->Cndr * s->act.dr);
   if (va_o) *va_o = Va;
   if (alpha_o) *alpha_o = alpha;
   if (beta_o) *beta_o = beta;
@@ -174,18 +160,18 @@ static double act_ch(double cur, double target, double tau, int ftype,
   return cur + (goal - cur) * k;
 }
 
-static void step_actuators(fdm_act *a, const fdm_cmds *c, const fdm_faults *f,
-                           double dt) {
+static void step_actuators(fdm_act *a, const fdm_coef *A, const fdm_cmds *c,
+                           const fdm_faults *f, double dt) {
   fdm_faults nf = {0, 0, 0, 0, 0.0};
   if (!f) f = &nf;
-  double tda = clampd(c->aileron * MAX_DEF, -MAX_DEF, MAX_DEF);
-  double tde = clampd(c->elevator * MAX_DEF, -MAX_DEF, MAX_DEF);
-  double tdr = clampd(c->rudder * MAX_DEF, -MAX_DEF, MAX_DEF);
+  double tda = clampd(c->aileron * A->maxDef, -A->maxDef, A->maxDef);
+  double tde = clampd(c->elevator * A->maxDef, -A->maxDef, A->maxDef);
+  double tdr = clampd(c->rudder * A->maxDef, -A->maxDef, A->maxDef);
   double tdt = clampd(c->throttle, 0.0, 1.0);
-  a->da = act_ch(a->da, tda, ACT_TAU, f->type_da, f->factor, dt);
-  a->de = act_ch(a->de, tde, ACT_TAU, f->type_de, f->factor, dt);
-  a->dr = act_ch(a->dr, tdr, ACT_TAU, f->type_dr, f->factor, dt);
-  a->dt = act_ch(a->dt, tdt, THR_TAU, f->type_dt, f->factor, dt);
+  a->da = act_ch(a->da, tda, A->actTau, f->type_da, f->factor, dt);
+  a->de = act_ch(a->de, tde, A->actTau, f->type_de, f->factor, dt);
+  a->dr = act_ch(a->dr, tdr, A->actTau, f->type_dr, f->factor, dt);
+  a->dt = act_ch(a->dt, tdt, A->thrTau, f->type_dt, f->factor, dt);
 }
 
 /* --- Dryden wind (mulberry32 Gauss–Markov, mirrors src/wind.js) ----------------- */
@@ -231,30 +217,32 @@ static void step_wind(fdm_wind *w, const fdm_state *s, const fdm_env *env,
 }
 
 /* --- Rigid-body step ------------------------------------------------------------ */
-void fdm_step(fdm_state *s, const fdm_cmds *c, const fdm_faults *f,
-              fdm_wind *w, const fdm_env *env, double dt, double ww_out[3]) {
+void fdm_step(fdm_state *s, const fdm_coef *coef, const fdm_cmds *c,
+              const fdm_faults *f, fdm_wind *w, const fdm_env *env, double dt,
+              double ww_out[3]) {
+  const fdm_coef *A = coef_or_default(coef);
   static const fdm_env calm = {0.0, 0.0, 0.0};
   double ww[3] = {0, 0, 0};
   if (w && env) step_wind(w, s, env, dt, ww);
   else if (w) step_wind(w, s, &calm, dt, ww);
   if (ww_out) { ww_out[0] = ww[0]; ww_out[1] = ww[1]; ww_out[2] = ww[2]; }
 
-  step_actuators(&s->act, c, f, dt);
+  step_actuators(&s->act, A, c, f, dt);
   double F[3], M[3];
-  fdm_forces_moments(s, ww, F, M, 0, 0, 0);
+  fdm_forces_moments(s, A, ww, F, M, 0, 0, 0);
 
   double f_ours[3], fw[3];
   from_frd(F, f_ours);
   quat_rotate(s->quat, f_ours, fw);
-  for (int i = 0; i < 3; i++) s->vel[i] += (fw[i] / MASS) * dt;
+  for (int i = 0; i < 3; i++) s->vel[i] += (fw[i] / A->mass) * dt;
   for (int i = 0; i < 3; i++) s->pos[i] += s->vel[i] * dt;
 
   double frd[3];
   to_frd(s->omega, frd);
   double p = frd[0], q = frd[1], r = frd[2];
-  double pDot = (M[0] + (JY - JZ) * q * r) / JX;
-  double qDot = (M[1] + (JZ - JX) * p * r) / JY;
-  double rDot = (M[2] + (JX - JY) * p * q) / JZ;
+  double pDot = (M[0] + (A->Jy - A->Jz) * q * r) / A->Jx;
+  double qDot = (M[1] + (A->Jz - A->Jx) * p * r) / A->Jy;
+  double rDot = (M[2] + (A->Jx - A->Jy) * p * q) / A->Jz;
   double nfrd[3] = { p + pDot * dt, q + qDot * dt, r + rDot * dt };
   from_frd(nfrd, s->omega);
   quat_integrate(s->quat, s->omega, dt);
@@ -264,7 +252,7 @@ void fdm_step(fdm_state *s, const fdm_cmds *c, const fdm_faults *f,
     if (s->vel[1] < 0.0) s->vel[1] = 0.0;
     double gs = hypot(s->vel[0], s->vel[2]);
     if (gs > 0.0) {
-      double mu = MU_ROLL + (s->act.dt < 0.1 ? MU_BRAKE : 0.0);
+      double mu = A->muRoll + (s->act.dt < 0.1 ? A->muBrake : 0.0);
       double dec = mu * G_ACC * dt;
       if (dec > gs) dec = gs;
       s->vel[0] -= (s->vel[0] / gs) * dec;

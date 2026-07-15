@@ -33,7 +33,9 @@ typedef int fmi2Status;
 #define EXPORT __attribute__((visibility("default")))
 
 /* --- value references (MUST match native/gen-fmu.mjs / channels.json) -------- */
-/* Inputs 0..11, outputs 100..119. gen-fmu.mjs verifies this mapping. */
+/* Inputs 0..11, outputs 100..119, PARAMETERS 200..200+FDM_COEF_COUNT-1
+ * (airframe coefficient set, field order = channels.json "parameters" —
+ * gen-fmu.mjs verifies all three mappings). */
 enum {
   VR_CMD_A = 0, VR_CMD_E, VR_CMD_R, VR_CMD_T,
   VR_ENV_N, VR_ENV_E, VR_ENV_TURB,
@@ -52,9 +54,12 @@ enum {
   VR_WOW
 };
 
+#define VR_PARAM_BASE 200
+
 typedef struct {
   fdm_state state;
   fdm_wind wind;
+  fdm_coef coef; /* airframe parameters; indexable as double[] (all-double struct) */
   double in[VR_IN_COUNT];
   double prev_reset;
   char instanceName[64];
@@ -79,6 +84,7 @@ EXPORT fmi2Component fmi2Instantiate(fmi2String instanceName, int fmuType,
   Model *m = (Model *)calloc(1, sizeof(Model));
   if (!m) return NULL;
   strncpy(m->instanceName, instanceName ? instanceName : "fdm-uav", 63);
+  fdm_coef_default(&m->coef);
   model_boot(m, 0);
   m->in[VR_CMD_T] = 0.0;
   return (fmi2Component)m;
@@ -107,8 +113,11 @@ EXPORT fmi2Status fmi2Reset(fmi2Component c) {
 EXPORT fmi2Status fmi2SetReal(fmi2Component c, const fmi2ValueReference vr[],
                               size_t n, const fmi2Real value[]) {
   Model *m = (Model *)c;
-  for (size_t i = 0; i < n; i++)
+  for (size_t i = 0; i < n; i++) {
     if (vr[i] < VR_IN_COUNT) m->in[vr[i]] = value[i];
+    else if (vr[i] >= VR_PARAM_BASE && vr[i] < VR_PARAM_BASE + (unsigned)FDM_COEF_COUNT)
+      ((double *)&m->coef)[vr[i] - VR_PARAM_BASE] = value[i];
+  }
   return fmi2OK;
 }
 
@@ -145,7 +154,10 @@ EXPORT fmi2Status fmi2GetReal(fmi2Component c, const fmi2ValueReference vr[],
       case VR_ACT_R: out = s->act.dr; break;
       case VR_ACT_T: out = s->act.dt; break;
       case VR_WOW: out = s->pos[1] <= 0.5 ? 1.0 : 0.0; break;
-      default: break;
+      default:
+        if (vr[i] >= VR_PARAM_BASE && vr[i] < VR_PARAM_BASE + (unsigned)FDM_COEF_COUNT)
+          out = ((const double *)&m->coef)[vr[i] - VR_PARAM_BASE];
+        break;
     }
     value[i] = out;
   }
@@ -172,7 +184,7 @@ EXPORT fmi2Status fmi2DoStep(fmi2Component c, fmi2Real currentTime,
   double remaining = stepSize;
   while (remaining > 1e-12) {
     double dt = remaining < BASE ? remaining : BASE;
-    fdm_step(&m->state, &cmd, &f, &m->wind, &env, dt, 0);
+    fdm_step(&m->state, &m->coef, &cmd, &f, &m->wind, &env, dt, 0);
     remaining -= dt;
   }
   return fmi2OK;

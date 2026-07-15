@@ -54,7 +54,16 @@ ${ch.inports.map(row).join('\n')}
 |---|---|---|---|
 ${ch.outports.map(row).join('\n')}
 
-## 4. 좌표계·규약
+## 4. Parameters (airframe re-targeting, FMI vref 200+)
+
+기체 재타깃용 파라미터 — 기본값은 golden 검증된 Aerosonde급 세트이며, FMU에서
+재컴파일 없이 교체 가능(예: 고객 기체의 Datcom/AVL 공력 DB).
+
+| 파라미터 | 단위 | 기본값 | 정보 |
+|---|---|---|---|
+${ch.parameters.map((c2) => `| ${c2.name} | ${c2.unit} | ${c2.default} | ${c2.desc} |`).join('\n')}
+
+## 5. 좌표계·규약
 
 - 위치/속도: NED (North-East-Down), home 원점. 자세: 항공 오일러 (roll right +, pitch up +, yaw 0=북/동 +). 각속도: 기체 FRD.
 - 결정론: 동일 입력 시퀀스 + 동일 리셋 → 비트 동일 출력 (난류는 시드 mulberry32 Gauss–Markov).

@@ -49,6 +49,30 @@ typedef struct {
   double turb;           /* Dryden intensity scale (0 = calm) */
 } fdm_env;
 
+
+/* Airframe coefficient set — ALL doubles, so wrappers may index it as a flat
+ * double[] (FMI parameter vref 200+i maps to field i; order is gated against
+ * native/channels.json by gen-fmu.mjs). Defaults = the golden-validated
+ * Aerosonde-class set (FDM_COEF_DEFAULT). Re-target the model to another
+ * airframe by supplying your own values — no recompilation. */
+typedef struct {
+  double mass, Jx, Jy, Jz;
+  double wingS, wingB, wingC;
+  double CL0, CLa, CLde;
+  double CD0, Kind;
+  double Cm0, Cma, Cmq, Cmde;
+  double CYb, CYdr;
+  double Clb, Clp, Clr, Clda, Cldr;
+  double Cnb, Cnp, Cnr, Cnda, Cndr;
+  double sProp, cProp, kMotor, maxThrustN;
+  double muRoll, muBrake;
+  double maxDef, actTau, thrTau, alphaClamp;
+} fdm_coef;
+
+extern const fdm_coef FDM_COEF_DEFAULT;
+void fdm_coef_default(fdm_coef *c);
+#define FDM_COEF_COUNT ((int)(sizeof(fdm_coef) / sizeof(double)))
+
 /* Constants mirrored from the JS reference (see src/physics.js AC/TRIM). */
 extern const double FDM_TRIM_VA, FDM_TRIM_ALPHA, FDM_TRIM_DE, FDM_TRIM_DT;
 
@@ -58,12 +82,13 @@ void fdm_wind_init(fdm_wind *w, int32_t seed);
 
 /* One fixed step: wind Gauss–Markov update + rigid-body integration.
  * wind_world_out (nullable) receives the world wind used this step. */
-void fdm_step(fdm_state *s, const fdm_cmds *c, const fdm_faults *f,
-              fdm_wind *w, const fdm_env *env, double dt,
+void fdm_step(fdm_state *s, const fdm_coef *coef, const fdm_cmds *c,
+              const fdm_faults *f, fdm_wind *w, const fdm_env *env, double dt,
               double wind_world_out[3]);
 
 /* Introspection used by golden checks and wrappers. */
-void fdm_forces_moments(const fdm_state *s, const double wind_world[3],
+void fdm_forces_moments(const fdm_state *s, const fdm_coef *coef,
+                        const double wind_world[3],
                         double F_out[3], double M_out[3],
                         double *va, double *alpha, double *beta);
 void fdm_air_data(const double quat[4], const double vel[3],

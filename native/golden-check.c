@@ -28,7 +28,7 @@ int main(void) {
     fdm_state s;
     load_state(GP_STATE[i], &s);
     double F[3], M[3], va, al, be;
-    fdm_forces_moments(&s, GP_WIND[i], F, M, &va, &al, &be);
+    fdm_forces_moments(&s, 0, GP_WIND[i], F, M, &va, &al, &be);
     double got[9] = {F[0], F[1], F[2], M[0], M[1], M[2], va, al, be};
     for (int k = 0; k < 9; k++) {
       double ref = GP_OUT[i][k];
@@ -64,7 +64,7 @@ int main(void) {
         } else if (ti == 2) { /* ground_roll */
           c.aileron = 0.0; c.elevator = 0.0; c.rudder = 0.0; c.throttle = 1.0;
         }
-        fdm_step(&s, &c, 0, &w, &env, DT, 0);
+        fdm_step(&s, 0, &c, 0, &w, &env, DT, 0);
       }
       for (int k = 0; k < 3; k++) {
         double e = fabs(s.pos[k] - ref[sec][k]);

@@ -516,3 +516,18 @@
 **Decisions**:
 - 사용자 피드백: 방산·항공 실무에서 영어로 통용되는 용어의 억지 한글화가 오히려 거부감을 준다 → 원칙 확정: **설명 문장은 한국어, 기술 용어·소제목은 실무 영어 그대로**. (6자유도→6-DOF, 연속 루프 폐쇄→SLC, 안정성 증강→SAS, 고장 주입→fault injection, 고착/유동/저속→jam/floating/slow, 접지 스위치→WoW, 결정론적→deterministic, 락스텝→lockstep 등)
 - 섹션 제목도 영어 관례로 (Deliverables / Verification & Quality / Simulator & HILS Capabilities / Run & Build / Scope & Honesty).
+
+## 2026-07-15 — VeriStand 통합 절차서 + M29: airframe parameterization
+
+**Status**: GREEN
+**Files changed**: docs/VERISTAND-GUIDE.md (new), PRD.md, native/{fdm.h,fdm.c,fmi2_model.c,nivs_model.c,golden-check.c,cov-driver.c,fmi-driver.c,fmi-check.mjs,gen-fmu.mjs,gen-spec.mjs,mcdc.sh,channels.json,INTERFACE.md}, COMPLIANCE-DO331.md
+**Tests**: golden **bit-identical after the refactor** (proof the math is untouched) · FMU parameter effect at the real ABI (SetReal mass×1.5 → −117 m/15 s) · line coverage 100% (215/215) · MC/DC 98.7% PASS · unit 89/89
+**Decisions**:
+- (③-1) docs/VERISTAND-GUIDE.md: 실물 리그 첫 탑재용 절차서 — 사전요건(VeriStand 2019+/Linux RT), FMU 확보(CI 아티팩트; macOS 빌드 금지 경고), Simulation Models 로드, 8단계 smoke test(부호 검증 포함), [확인점 1~5] 회신 양식. 실물 미탑재 사실을 문서 첫머리에 고지.
+- (③-2, M29) 기체 상수 38개(#define)를 `fdm_coef` 구조체로 — ALL-double이라 wrapper가 flat double[]로 인덱싱(FMI vref 200+i). NULL→FDM_COEF_DEFAULT(정적 const 초기화). 공개 API에 coef 인자 추가, 전 C 호출부 갱신.
+- 단일 진실 소스 확장: channels.json에 "parameters" 38종 → gen-fmu가 modelDescription.xml에 causality="parameter"로 방출하고 **fdm_coef 필드 순서를 fdm.h에서 파싱해 대조(드리프트=빌드 실패)**; INTERFACE.md에 §4 파라미터 표 자동 생성.
+- 검증 전략: golden은 defaults에 고정(비트 동일 = 리팩터 무결성 증명), 파라미터 "효과"는 행동으로 검증(C API: cov-driver 질량↑→침하; 실 fmi2 ABI: fmi-driver 'heavy' 케이스). JS reference는 고정 계수 유지(문서화) — golden의 기준이므로.
+- mcdc.sh 허용목록을 라인 번호→소스 패턴("n == 0.0") 기반으로 견고화 — 리팩터로 라인이 밀려도 정당화가 유지되고, 다른 미커버는 여전히 빌드 실패.
+- NIVS wrapper는 기본 airframe 고정(파라미터 경로는 FMU) — 한계로 명시.
+**Next**:
+- 사용자 QGC 테스트 결과 대기; VeriStand 실물 [확인점] 회신 시 반영. Backlog: crash-detection latch, NIVS parameter table.

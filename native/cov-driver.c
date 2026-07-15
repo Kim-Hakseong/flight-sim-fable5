@@ -53,11 +53,11 @@ int main(void) {
   {
     fdm_state s; fdm_initial_state(&s);
     fdm_cmds over = {5.0, -5.0, 5.0, 2.0};   /* all past the rails, both signs */
-    for (int i = 0; i < 30; i++) fdm_step(&s, &over, 0, 0, 0, DT, 0);
+    for (int i = 0; i < 30; i++) fdm_step(&s, 0, &over, 0, 0, 0, DT, 0);
     expect(s.act.dt <= 1.0 + 1e-12 && s.act.dt >= 0.0, "throttle clamps to [0,1]");
     expect(fabs(s.act.da) <= 0.44 + 1e-9 && fabs(s.act.de) <= 0.44 + 1e-9, "deflection clamps to ±maxDef");
     fdm_cmds under = {0, 0, 0, -3.0};        /* throttle below 0 */
-    fdm_step(&s, &under, 0, 0, 0, DT, 0);
+    fdm_step(&s, 0, &under, 0, 0, 0, DT, 0);
     expect(s.act.dt >= 0.0, "throttle clamps at 0 from below");
   }
 
@@ -67,13 +67,13 @@ int main(void) {
     double held = s.act.da;
     fdm_faults jam = {1, 0, 0, 0, 0.0};                 /* aileron jam */
     fdm_cmds c = {0.5, TE, 0.0, FDM_TRIM_DT};
-    for (int i = 0; i < 60; i++) fdm_step(&s, &c, &jam, 0, 0, DT, 0);
+    for (int i = 0; i < 60; i++) fdm_step(&s, 0, &c, &jam, 0, 0, DT, 0);
     expect(fabs(s.act.da - held) < 1e-12, "jam holds the surface");
 
     fdm_initial_state(&s);
     fdm_faults flt = {0, 2, 0, 2, 0.0};                 /* elevator + throttle floating */
     fdm_cmds c2 = {0.0, TE, 0.0, 0.9};
-    for (int i = 0; i < 600; i++) fdm_step(&s, &c2, &flt, 0, 0, DT, 0);
+    for (int i = 0; i < 600; i++) fdm_step(&s, 0, &c2, &flt, 0, 0, DT, 0);
     expect(fabs(s.act.de) < 1e-3, "floating elevator streams to neutral");
     expect(s.act.dt < 1e-3, "floating throttle dies");
 
@@ -81,11 +81,11 @@ int main(void) {
     fdm_faults slow = {0, 0, 3, 0, 8.0};                /* rudder slow, factor 8 */
     fdm_cmds c3 = {0.0, TE, 0.4, FDM_TRIM_DT};
     double first = s.act.dr;
-    fdm_step(&s, &c3, &slow, 0, 0, DT, 0);
+    fdm_step(&s, 0, &c3, &slow, 0, 0, DT, 0);
     expect(s.act.dr > first && s.act.dr < 0.05, "slow servo slews, but far short of target");
 
     fdm_faults deflt_factor = {0, 0, 3, 0, 0.0};        /* slow with factor<=0 → default 6 */
-    fdm_step(&s, &c3, &deflt_factor, 0, 0, DT, 0);
+    fdm_step(&s, 0, &c3, &deflt_factor, 0, 0, DT, 0);
     expect(1, "slow default factor path exercised");
   }
 
@@ -93,7 +93,7 @@ int main(void) {
   {
     fdm_state s; fdm_initial_state(&s);
     fdm_cmds c = {1.0, TE, 0.0, FDM_TRIM_DT};
-    fdm_step(&s, &c, 0, 0, 0, 0.2 /* > ACT_TAU 0.05 → k clamps to 1 */, 0);
+    fdm_step(&s, 0, &c, 0, 0, 0, 0.2 /* > ACT_TAU 0.05 → k clamps to 1 */, 0);
     expect(fabs(s.act.da - 0.44) < 1e-9, "large dt saturates the servo to the rail in one step");
   }
 
@@ -103,7 +103,7 @@ int main(void) {
     fdm_wind w; fdm_wind_init(&w, 2);
     fdm_env env = {0.0, 0.0, 1.0};
     fdm_cmds c = {0.0, TE, 0.0, FDM_TRIM_DT};
-    fdm_step(&s, &c, 0, &w, &env, 3.0 /* >> L/V ⇒ a clamps to 1 */, 0);
+    fdm_step(&s, 0, &c, 0, &w, &env, 3.0 /* >> L/V ⇒ a clamps to 1 */, 0);
     expect(1, "wind alpha clamp exercised");
   }
 
@@ -113,9 +113,9 @@ int main(void) {
     fdm_wind w; fdm_wind_init(&w, 2);
     fdm_cmds c = {0.0, TE, 0.0, FDM_TRIM_DT};
     double ww[3] = {1, 1, 1};
-    fdm_step(&s, &c, 0, &w, 0 /* env NULL → calm */, DT, ww);
+    fdm_step(&s, 0, &c, 0, &w, 0 /* env NULL → calm */, DT, ww);
     expect(fabs(ww[0]) < 1e-12 && fabs(ww[1]) < 1e-12 && fabs(ww[2]) < 1e-12, "null-env wind is calm");
-    fdm_step(&s, &c, 0, 0, 0, DT, 0);
+    fdm_step(&s, 0, &c, 0, 0, 0, DT, 0);
     expect(s.pos[1] > 100.0, "no-wind step ok");
   }
 
@@ -131,7 +131,7 @@ int main(void) {
     double ph = (-10.0 * M_PI / 180.0) / 2.0;
     s.quat[0] = sin(ph); s.quat[3] = cos(ph);
     fdm_cmds c = {0.0, TE, 0.0, 0.0 /* idle → brake */};
-    fdm_step(&s, &c, 0, 0, 0, 0.8 /* big dt → kp AND kr (1.5·dt) clamp past 1 */, 0);
+    fdm_step(&s, 0, &c, 0, 0, 0, 0.8 /* big dt → kp AND kr (1.5·dt) clamp past 1 */, 0);
     expect(s.pos[1] == 0.0, "stays on the ground");
     expect(s.vel[1] >= 0.0, "sink clamped at the surface");
     double gs = hypot(s.vel[0], s.vel[2]);
@@ -140,15 +140,32 @@ int main(void) {
     /* Parked at rest (gs not >0): covers the FALSE side of the friction decision
        (L266). */
     fdm_state r; fdm_ground_state(&r); r.pos[1] = 0.0;
-    fdm_step(&r, &c, 0, 0, 0, DT, 0);
+    fdm_step(&r, 0, &c, 0, 0, 0, DT, 0);
     expect(hypot(r.vel[0], r.vel[2]) < 1e-9, "parked stays put (no friction branch)");
 
     /* Recovering from just below the surface with upward velocity: still inside
        the pos<=0 block but vel[1] >= 0, so the sink clamp must NOT fire — the
        FALSE side of L264. */
     fdm_state u; fdm_ground_state(&u); u.pos[1] = -0.1; u.vel[1] = 3.0; u.vel[2] = -30.0;
-    fdm_step(&u, &c, 0, 0, 0, DT, 0);
+    fdm_step(&u, 0, &c, 0, 0, 0, DT, 0);
     expect(u.vel[1] > 0.0, "climbing-out vertical velocity is preserved (sink clamp not fired)");
+  }
+
+  /* --- airframe parameterization: custom coef branch + physical effect -------- */
+  {
+    fdm_coef heavy;
+    fdm_coef_default(&heavy);
+    heavy.mass *= 1.5;
+    fdm_state sd, sh;
+    fdm_initial_state(&sd);
+    fdm_initial_state(&sh);
+    fdm_cmds c = {0.0, TE, 0.0, FDM_TRIM_DT};
+    for (int i = 0; i < 10 * 60; i++) {
+      fdm_step(&sd, 0, &c, 0, 0, 0, DT, 0);       /* default airframe */
+      fdm_step(&sh, &heavy, &c, 0, 0, 0, DT, 0);  /* 1.5× mass */
+    }
+    expect(sh.pos[1] < sd.pos[1] - 10.0, "heavier airframe sinks vs default at trim power");
+    expect(FDM_COEF_COUNT == 38, "coef count matches the delivered parameter table");
   }
 
   printf(fails ? "COV-DRIVER: %d FAILED\n" : "COV-DRIVER: PASS\n", fails);

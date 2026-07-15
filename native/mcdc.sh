@@ -13,11 +13,11 @@
 set -e
 cd "$(dirname "$0")"
 
-# Justified, unreachable defensive conditions (fdm.c line → rationale in
-# COMPLIANCE-DO331.md §5). These are allowed to remain uncovered.
-#   L71: quat_normalize `if (n == 0.0)` — a valid attitude quaternion never has a
-#        zero norm; this guards the subsequent division. Provably unreachable.
-ALLOWLIST="71"
+# Justified, unreachable defensive conditions, matched by SOURCE PATTERN (line
+# numbers shift with refactors). Rationale in COMPLIANCE-DO331.md §5.
+#   "n == 0.0" — quat_normalize zero-norm guard: a valid attitude quaternion never
+#   has a zero norm; this protects the division. Provably unreachable.
+ALLOW_PATTERNS="n == 0.0"
 
 # --- find a gcc with -fcondition-coverage ------------------------------------
 GCC=""
@@ -46,25 +46,26 @@ rm -f ./*.gcda ./*.gcno ./*.gcov cov-golden cov-driver fdm-cov.o
 ./cov-driver
 $GCOV --conditions fdm-cov.gcda >/dev/null 2>&1 || $GCOV --conditions fdm.gcda >/dev/null 2>&1 || true
 
-ALLOWLIST="$ALLOWLIST" python3 - <<'PY'
+ALLOW_PATTERNS="$ALLOW_PATTERNS" python3 - <<'PY'
 import re, os, sys, glob
-allow = set(os.environ.get("ALLOWLIST", "").split())
+patterns = [p.strip() for p in os.environ.get("ALLOW_PATTERNS", "").split("|") if p.strip()]
 gc = 'fdm.c.gcov'
 if not glob.glob(gc):
     print("MCDC ERROR: no fdm.c.gcov"); sys.exit(2)
 lines = open(gc).read().splitlines()
-cur = None
+cur = None; cursrc = ""
 total = covered = 0
 unjustified = []; justified = []
 for ln in lines:
-    m = re.match(r'\s*[#\-0-9]+\*?:\s*(\d+):', ln)
-    if m: cur = m.group(1)
+    m = re.match(r'\s*[#\-0-9]+\*?:\s*(\d+):(.*)', ln)
+    if m: cur, cursrc = m.group(1), m.group(2)
     mm = re.search(r'condition outcomes covered (\d+)/(\d+)', ln)
     if mm and cur:
         c, t = int(mm.group(1)), int(mm.group(2))
         total += t; covered += c
         if c < t:
-            (justified if cur in allow else unjustified).append((cur, c, t))
+            ok = any(p in cursrc for p in patterns)
+            (justified if ok else unjustified).append((cur, c, t))
 pct = 100.0 * covered / total if total else 100.0
 print(f"fdm.c MC/DC condition coverage: {covered}/{total} = {pct:.1f}%")
 for l, c, t in justified:

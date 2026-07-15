@@ -61,7 +61,53 @@
 | Act_Throttle | - | — | actual throttle |
 | WoW | bool | — | weight on wheels discrete |
 
-## 4. 좌표계·규약
+## 4. Parameters (airframe re-targeting, FMI vref 200+)
+
+기체 재타깃용 파라미터 — 기본값은 golden 검증된 Aerosonde급 세트이며, FMU에서
+재컴파일 없이 교체 가능(예: 고객 기체의 Datcom/AVL 공력 DB).
+
+| 파라미터 | 단위 | 기본값 | 정보 |
+|---|---|---|---|
+| mass | kg | 13.5 | airframe mass |
+| Jx | kg·m² | 0.8244 | roll inertia |
+| Jy | kg·m² | 1.135 | pitch inertia |
+| Jz | kg·m² | 1.759 | yaw inertia |
+| wingS | m² | 0.55 | wing reference area |
+| wingB | m | 2.9 | wing span |
+| wingC | m | 0.19 | mean chord |
+| CL0 | - | 0.28 | lift coeff at zero AoA |
+| CLa | 1/rad | 3.45 | lift slope |
+| CLde | 1/rad | 0.36 | lift per elevator |
+| CD0 | - | 0.03 | parasitic drag |
+| Kind | - | 0.0231 | induced drag factor |
+| Cm0 | - | -0.02338 | pitch moment at zero AoA |
+| Cma | 1/rad | -0.38 | pitch stiffness |
+| Cmq | 1/rad | -3.6 | pitch damping |
+| Cmde | 1/rad | -0.5 | elevator power |
+| CYb | 1/rad | -0.98 | side force per sideslip |
+| CYdr | 1/rad | 0.19 | side force per rudder |
+| Clb | 1/rad | -0.12 | dihedral effect |
+| Clp | 1/rad | -0.26 | roll damping |
+| Clr | 1/rad | 0.14 | roll per yaw rate |
+| Clda | 1/rad | 0.13 | aileron power |
+| Cldr | 1/rad | 0.008 | roll per rudder |
+| Cnb | 1/rad | 0.25 | weathercock stability |
+| Cnp | 1/rad | 0.022 | yaw per roll rate |
+| Cnr | 1/rad | -0.35 | yaw damping |
+| Cnda | 1/rad | -0.011 | adverse yaw |
+| Cndr | 1/rad | -0.069 | rudder power |
+| sProp | m² | 0.2027 | prop disk area |
+| cProp | - | 1 | prop efficiency coeff |
+| kMotor | - | 50 | motor constant |
+| maxThrustN | N | 60 | static thrust cap |
+| muRoll | - | 0.03 | rolling resistance |
+| muBrake | - | 0.22 | brake friction (idle throttle) |
+| maxDef | rad | 0.44 | surface deflection limit |
+| actTau | s | 0.05 | surface actuator time constant |
+| thrTau | s | 0.4 | throttle time constant |
+| alphaClamp | rad | 0.3 | lift-model AoA clamp |
+
+## 5. 좌표계·규약
 
 - 위치/속도: NED (North-East-Down), home 원점. 자세: 항공 오일러 (roll right +, pitch up +, yaw 0=북/동 +). 각속도: 기체 FRD.
 - 결정론: 동일 입력 시퀀스 + 동일 리셋 → 비트 동일 출력 (난류는 시드 mulberry32 Gauss–Markov).

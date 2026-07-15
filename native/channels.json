@@ -3,39 +3,421 @@
   "description": "Aerosonde-class small-UAV integrated plant model (6-DOF + actuators + Dryden environment), golden-validated against the JS reference simulator.",
   "base_rate_hz": 60,
   "inports": [
-    { "name": "Cmd_Aileron", "unit": "-", "min": -1, "max": 1, "desc": "aileron command, fraction of ±25.2 deg" },
-    { "name": "Cmd_Elevator", "unit": "-", "min": -1, "max": 1, "desc": "elevator command (+ = trailing edge down = nose down)" },
-    { "name": "Cmd_Rudder", "unit": "-", "min": -1, "max": 1, "desc": "rudder command (− = nose right)" },
-    { "name": "Cmd_Throttle", "unit": "-", "min": 0, "max": 1, "desc": "throttle command" },
-    { "name": "Env_WindN", "unit": "m/s", "min": -20, "max": 20, "desc": "steady wind TO north" },
-    { "name": "Env_WindE", "unit": "m/s", "min": -20, "max": 20, "desc": "steady wind TO east" },
-    { "name": "Env_Turb", "unit": "-", "min": 0, "max": 3, "desc": "Dryden intensity scale (0 = calm)" },
-    { "name": "Flt_Aileron", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
-    { "name": "Flt_Elevator", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
-    { "name": "Flt_Rudder", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
-    { "name": "Flt_Throttle", "unit": "enum", "min": 0, "max": 3, "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow" },
-    { "name": "Sim_Reset", "unit": "bool", "min": 0, "max": 2, "desc": "rising >0.5 re-initializes; 1 = ground boot, 2 = airborne trim" }
+    {
+      "name": "Cmd_Aileron",
+      "unit": "-",
+      "min": -1,
+      "max": 1,
+      "desc": "aileron command, fraction of ±25.2 deg"
+    },
+    {
+      "name": "Cmd_Elevator",
+      "unit": "-",
+      "min": -1,
+      "max": 1,
+      "desc": "elevator command (+ = trailing edge down = nose down)"
+    },
+    {
+      "name": "Cmd_Rudder",
+      "unit": "-",
+      "min": -1,
+      "max": 1,
+      "desc": "rudder command (− = nose right)"
+    },
+    {
+      "name": "Cmd_Throttle",
+      "unit": "-",
+      "min": 0,
+      "max": 1,
+      "desc": "throttle command"
+    },
+    {
+      "name": "Env_WindN",
+      "unit": "m/s",
+      "min": -20,
+      "max": 20,
+      "desc": "steady wind TO north"
+    },
+    {
+      "name": "Env_WindE",
+      "unit": "m/s",
+      "min": -20,
+      "max": 20,
+      "desc": "steady wind TO east"
+    },
+    {
+      "name": "Env_Turb",
+      "unit": "-",
+      "min": 0,
+      "max": 3,
+      "desc": "Dryden intensity scale (0 = calm)"
+    },
+    {
+      "name": "Flt_Aileron",
+      "unit": "enum",
+      "min": 0,
+      "max": 3,
+      "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow"
+    },
+    {
+      "name": "Flt_Elevator",
+      "unit": "enum",
+      "min": 0,
+      "max": 3,
+      "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow"
+    },
+    {
+      "name": "Flt_Rudder",
+      "unit": "enum",
+      "min": 0,
+      "max": 3,
+      "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow"
+    },
+    {
+      "name": "Flt_Throttle",
+      "unit": "enum",
+      "min": 0,
+      "max": 3,
+      "desc": "servo fault: 0 none / 1 jam / 2 floating / 3 slow"
+    },
+    {
+      "name": "Sim_Reset",
+      "unit": "bool",
+      "min": 0,
+      "max": 2,
+      "desc": "rising >0.5 re-initializes; 1 = ground boot, 2 = airborne trim"
+    }
   ],
   "outports": [
-    { "name": "Pos_N", "unit": "m", "desc": "position north of home" },
-    { "name": "Pos_E", "unit": "m", "desc": "position east of home" },
-    { "name": "Pos_D", "unit": "m", "desc": "position down (negative = altitude)" },
-    { "name": "Vel_N", "unit": "m/s", "desc": "ground velocity north" },
-    { "name": "Vel_E", "unit": "m/s", "desc": "ground velocity east" },
-    { "name": "Vel_D", "unit": "m/s", "desc": "ground velocity down" },
-    { "name": "Att_Roll", "unit": "rad", "desc": "roll, right +" },
-    { "name": "Att_Pitch", "unit": "rad", "desc": "pitch, up +" },
-    { "name": "Att_Yaw", "unit": "rad", "desc": "yaw, 0 = north, east +" },
-    { "name": "Rate_P", "unit": "rad/s", "desc": "body roll rate (FRD)" },
-    { "name": "Rate_Q", "unit": "rad/s", "desc": "body pitch rate (FRD)" },
-    { "name": "Rate_R", "unit": "rad/s", "desc": "body yaw rate (FRD)" },
-    { "name": "Air_Va", "unit": "m/s", "desc": "true airspeed" },
-    { "name": "Air_Alpha", "unit": "rad", "desc": "angle of attack" },
-    { "name": "Air_Beta", "unit": "rad", "desc": "sideslip" },
-    { "name": "Act_Aileron", "unit": "rad", "desc": "actual aileron deflection" },
-    { "name": "Act_Elevator", "unit": "rad", "desc": "actual elevator deflection" },
-    { "name": "Act_Rudder", "unit": "rad", "desc": "actual rudder deflection" },
-    { "name": "Act_Throttle", "unit": "-", "desc": "actual throttle" },
-    { "name": "WoW", "unit": "bool", "desc": "weight on wheels discrete" }
+    {
+      "name": "Pos_N",
+      "unit": "m",
+      "desc": "position north of home"
+    },
+    {
+      "name": "Pos_E",
+      "unit": "m",
+      "desc": "position east of home"
+    },
+    {
+      "name": "Pos_D",
+      "unit": "m",
+      "desc": "position down (negative = altitude)"
+    },
+    {
+      "name": "Vel_N",
+      "unit": "m/s",
+      "desc": "ground velocity north"
+    },
+    {
+      "name": "Vel_E",
+      "unit": "m/s",
+      "desc": "ground velocity east"
+    },
+    {
+      "name": "Vel_D",
+      "unit": "m/s",
+      "desc": "ground velocity down"
+    },
+    {
+      "name": "Att_Roll",
+      "unit": "rad",
+      "desc": "roll, right +"
+    },
+    {
+      "name": "Att_Pitch",
+      "unit": "rad",
+      "desc": "pitch, up +"
+    },
+    {
+      "name": "Att_Yaw",
+      "unit": "rad",
+      "desc": "yaw, 0 = north, east +"
+    },
+    {
+      "name": "Rate_P",
+      "unit": "rad/s",
+      "desc": "body roll rate (FRD)"
+    },
+    {
+      "name": "Rate_Q",
+      "unit": "rad/s",
+      "desc": "body pitch rate (FRD)"
+    },
+    {
+      "name": "Rate_R",
+      "unit": "rad/s",
+      "desc": "body yaw rate (FRD)"
+    },
+    {
+      "name": "Air_Va",
+      "unit": "m/s",
+      "desc": "true airspeed"
+    },
+    {
+      "name": "Air_Alpha",
+      "unit": "rad",
+      "desc": "angle of attack"
+    },
+    {
+      "name": "Air_Beta",
+      "unit": "rad",
+      "desc": "sideslip"
+    },
+    {
+      "name": "Act_Aileron",
+      "unit": "rad",
+      "desc": "actual aileron deflection"
+    },
+    {
+      "name": "Act_Elevator",
+      "unit": "rad",
+      "desc": "actual elevator deflection"
+    },
+    {
+      "name": "Act_Rudder",
+      "unit": "rad",
+      "desc": "actual rudder deflection"
+    },
+    {
+      "name": "Act_Throttle",
+      "unit": "-",
+      "desc": "actual throttle"
+    },
+    {
+      "name": "WoW",
+      "unit": "bool",
+      "desc": "weight on wheels discrete"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "mass",
+      "unit": "kg",
+      "default": 13.5,
+      "desc": "airframe mass"
+    },
+    {
+      "name": "Jx",
+      "unit": "kg·m²",
+      "default": 0.8244,
+      "desc": "roll inertia"
+    },
+    {
+      "name": "Jy",
+      "unit": "kg·m²",
+      "default": 1.135,
+      "desc": "pitch inertia"
+    },
+    {
+      "name": "Jz",
+      "unit": "kg·m²",
+      "default": 1.759,
+      "desc": "yaw inertia"
+    },
+    {
+      "name": "wingS",
+      "unit": "m²",
+      "default": 0.55,
+      "desc": "wing reference area"
+    },
+    {
+      "name": "wingB",
+      "unit": "m",
+      "default": 2.9,
+      "desc": "wing span"
+    },
+    {
+      "name": "wingC",
+      "unit": "m",
+      "default": 0.19,
+      "desc": "mean chord"
+    },
+    {
+      "name": "CL0",
+      "unit": "-",
+      "default": 0.28,
+      "desc": "lift coeff at zero AoA"
+    },
+    {
+      "name": "CLa",
+      "unit": "1/rad",
+      "default": 3.45,
+      "desc": "lift slope"
+    },
+    {
+      "name": "CLde",
+      "unit": "1/rad",
+      "default": 0.36,
+      "desc": "lift per elevator"
+    },
+    {
+      "name": "CD0",
+      "unit": "-",
+      "default": 0.03,
+      "desc": "parasitic drag"
+    },
+    {
+      "name": "Kind",
+      "unit": "-",
+      "default": 0.0231,
+      "desc": "induced drag factor"
+    },
+    {
+      "name": "Cm0",
+      "unit": "-",
+      "default": -0.02338,
+      "desc": "pitch moment at zero AoA"
+    },
+    {
+      "name": "Cma",
+      "unit": "1/rad",
+      "default": -0.38,
+      "desc": "pitch stiffness"
+    },
+    {
+      "name": "Cmq",
+      "unit": "1/rad",
+      "default": -3.6,
+      "desc": "pitch damping"
+    },
+    {
+      "name": "Cmde",
+      "unit": "1/rad",
+      "default": -0.5,
+      "desc": "elevator power"
+    },
+    {
+      "name": "CYb",
+      "unit": "1/rad",
+      "default": -0.98,
+      "desc": "side force per sideslip"
+    },
+    {
+      "name": "CYdr",
+      "unit": "1/rad",
+      "default": 0.19,
+      "desc": "side force per rudder"
+    },
+    {
+      "name": "Clb",
+      "unit": "1/rad",
+      "default": -0.12,
+      "desc": "dihedral effect"
+    },
+    {
+      "name": "Clp",
+      "unit": "1/rad",
+      "default": -0.26,
+      "desc": "roll damping"
+    },
+    {
+      "name": "Clr",
+      "unit": "1/rad",
+      "default": 0.14,
+      "desc": "roll per yaw rate"
+    },
+    {
+      "name": "Clda",
+      "unit": "1/rad",
+      "default": 0.13,
+      "desc": "aileron power"
+    },
+    {
+      "name": "Cldr",
+      "unit": "1/rad",
+      "default": 0.008,
+      "desc": "roll per rudder"
+    },
+    {
+      "name": "Cnb",
+      "unit": "1/rad",
+      "default": 0.25,
+      "desc": "weathercock stability"
+    },
+    {
+      "name": "Cnp",
+      "unit": "1/rad",
+      "default": 0.022,
+      "desc": "yaw per roll rate"
+    },
+    {
+      "name": "Cnr",
+      "unit": "1/rad",
+      "default": -0.35,
+      "desc": "yaw damping"
+    },
+    {
+      "name": "Cnda",
+      "unit": "1/rad",
+      "default": -0.011,
+      "desc": "adverse yaw"
+    },
+    {
+      "name": "Cndr",
+      "unit": "1/rad",
+      "default": -0.069,
+      "desc": "rudder power"
+    },
+    {
+      "name": "sProp",
+      "unit": "m²",
+      "default": 0.2027,
+      "desc": "prop disk area"
+    },
+    {
+      "name": "cProp",
+      "unit": "-",
+      "default": 1.0,
+      "desc": "prop efficiency coeff"
+    },
+    {
+      "name": "kMotor",
+      "unit": "-",
+      "default": 50.0,
+      "desc": "motor constant"
+    },
+    {
+      "name": "maxThrustN",
+      "unit": "N",
+      "default": 60.0,
+      "desc": "static thrust cap"
+    },
+    {
+      "name": "muRoll",
+      "unit": "-",
+      "default": 0.03,
+      "desc": "rolling resistance"
+    },
+    {
+      "name": "muBrake",
+      "unit": "-",
+      "default": 0.22,
+      "desc": "brake friction (idle throttle)"
+    },
+    {
+      "name": "maxDef",
+      "unit": "rad",
+      "default": 0.44,
+      "desc": "surface deflection limit"
+    },
+    {
+      "name": "actTau",
+      "unit": "s",
+      "default": 0.05,
+      "desc": "surface actuator time constant"
+    },
+    {
+      "name": "thrTau",
+      "unit": "s",
+      "default": 0.4,
+      "desc": "throttle time constant"
+    },
+    {
+      "name": "alphaClamp",
+      "unit": "rad",
+      "default": 0.3,
+      "desc": "lift-model AoA clamp"
+    }
   ]
 }

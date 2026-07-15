@@ -76,7 +76,7 @@ int32_t USER_TakeOneStep(double *inData, double *outData, double timestamp) {
                   (int)in->Flt_Rudder, (int)in->Flt_Throttle, 0.0};
   fdm_env env = {in->Env_WindN, in->Env_WindE, in->Env_Turb};
   double ww[3];
-  fdm_step(&g_state, &c, &f, &g_wind, &env, BASE_DT, ww);
+  fdm_step(&g_state, 0 /* default airframe; parameterized path = FMU */, &c, &f, &g_wind, &env, BASE_DT, ww);
 
   /* ours → NED: N = −z, E = +x, D = −y */
   out->Pos_N = -g_state.pos[2];
