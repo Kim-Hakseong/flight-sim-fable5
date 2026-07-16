@@ -653,3 +653,18 @@
 - (옵션) 3D 씬에 펜스 지오메트리 시각화(현재는 QGC에만 표시).
 **Notes**:
 - 사용자 QGC 실테스트에서 이륙/복귀/go-to 정상 확인됨. 미션 경로가 뱅글뱅글 도는 건 버그 아님(고정익 최소선회반경 ~134m + 단순 point-pursuit) — L1 개선은 별도 진행 대기.
+
+## 2026-07-16 — docs: QGC 연동 테스트 & 초보자 사용 가이드 추가
+
+**Status**: GREEN
+**Files changed**: docs/QGC-GUIDE.md(신규), README.md
+**Tests**: n/a (문서) · 기존 게이트 영향 없음
+**Decisions**:
+- 사용자 요청: 다른 윈도우 PC에서 git 받아 QGC로 테스트하는 가이드 + QGC/ArduPilot 개발자 사용법을 초보자용으로 아주 쉽게, git 포함.
+- docs/QGC-GUIDE.md 작성(한국어, 초보자 대상): 30초 개요·그림 → 윈도우 설치(Node/QGC/Git, npm install 불필요 명시) → 실행 3단계 → QGC 화면 설명 → 기본 조작 실습(ARM/이륙/모드/go-to/미션/RTL/지오펜스/파라미터/고장주입) → 키보드 단축키 표 → 용어 사전 → 문제 해결 FAQ(방화벽·연결 등) → 개발자 메모(포트·핵심 파일·브리지 로그 읽기·테스트).
+- 미션 경로 루프/착륙 기울기 등 사용자가 실제 물었던 것들을 FAQ에 "정상입니다"로 선반영.
+- README Documents에 가이드 링크 최상단 배치.
+**Next**:
+- (대기) AUTO 유도 L1 개선, 지오펜스 3D 시각화(옵션).
+**Notes**:
+- 이 프로젝트는 외부 의존성 0 — 윈도우에서 Node.js만 있으면 `npm run bridge`로 바로 실행(npm install 불필요).

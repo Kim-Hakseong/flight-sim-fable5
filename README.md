@@ -85,6 +85,8 @@ tests/        *.test.mjs (unit) + gcs-loop-check / hils-run / browser-check / co
 
 ## Documents
 
+- **`docs/QGC-GUIDE.md` — QGroundControl 연동 테스트 & 사용 가이드 (초보자용).**
+  다른 윈도우 PC에서 받아 QGC로 비행체를 조종해보는 전 과정.
 - `PRD.md` — 사양서(최상위 권위).
 - `Log.md` — 마일스톤별 개발 로그.
 - `CLAUDE.md` — 엔지니어링 운영 규범.
