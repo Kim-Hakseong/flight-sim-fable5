@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { encode, decode } from './mavlink.mjs';
 import { PARAM_DEFS, PARAM_TYPE_REAL32, defaultParams, clampParam } from '../src/params.js';
 import { MODES, MODE_NAMES } from '../src/autopilot.js';
-import { COMPAT_PARAMS, FENCE_FORWARDED } from './compat-params.mjs';
+import { COMPAT_PARAMS } from './compat-params.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const HTTP_PORT = Number(process.env.BRIDGE_HTTP_PORT ?? 8765);
@@ -121,13 +121,12 @@ function sendParamValue(id, index = PARAM_DEFS.findIndex((p) => p.id === id)) {
 
 function handleParamSet(f) {
   if (compat.has(f.param_id)) { // QGC setup-page writes: accept + echo, keep local
+    // Pure cosmetic stubs — NEVER forwarded to the sim. (FENCE_* included: an
+    // altitude ceiling is NOT auto-applied from params, or opening QGC's fence
+    // page would silently impose FENCE_ALT_MAX and RTL-divert any higher flight.
+    // The geofence GEOMETRY the user draws + uploads is the real, opt-in fence.)
     compat.set(f.param_id, f.param_value);
     sendParamValue(f.param_id);
-    // A few fence params drive real enforcement — forward them to the sim.
-    if (FENCE_FORWARDED.has(f.param_id)) {
-      const altMax = (compat.get('FENCE_ENABLE') ? compat.get('FENCE_ALT_MAX') : 0) || 0;
-      pushCommand({ type: 'fence', altMax });
-    }
     return;
   }
   const clamped = clampParam(f.param_id, f.param_value);

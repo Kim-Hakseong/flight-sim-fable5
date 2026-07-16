@@ -676,3 +676,11 @@
 **Tests**: unit 109/109 · gcs PASS(신규: HEARTBEAT가 ARM 즉시 반영) · HILS 7/7 · browser PASS
 **Decisions**: 사용자 보고 "잘 되다 안된다" — QGC 이륙 시 간헐적 "Unable to start takeoff: Vehicle failed to arm". 원인: QGC 이륙은 ①ARM 명령 → ②HEARTBEAT의 ARMED 비트로 시동 확인 대기 → ③확인되면 takeoff 순서인데, ARM(400)에 낙관적 반영이 없어 시동 확인이 sim→telemetry(10Hz)→HEARTBEAT(1Hz) 왕복(~1s+)을 기다림 → QGC 타임아웃(간헐적). 모드 변경 때(relayMode)와 동일한 계열 버그. 수정: relayArm() 헬퍼 — ARM 명령 릴레이 시 vehicle.armed 즉시 반영 + HEARTBEAT 즉시 전송. NAV_TAKEOFF(22)도 armed+TAKEOFF 모드를 낙관적으로 반영. sim이 telemetry로 확정(불일치 시 정정).
 **Notes**: 낙관적 반영 3종 완비 — 모드(relayMode)/시동(relayArm)/이륙. QGC의 명령→확인 타임아웃 계열 이슈 정리됨.
+
+## 2026-07-16 — QGC 실테스트 피드백 11: 지오펜스 회귀 — FENCE_ALT_MAX 자동 적용 제거
+
+**Status**: GREEN
+**Files changed**: bridge/server.mjs, bridge/compat-params.mjs
+**Tests**: unit 109/109 · gcs PASS(펜스 지오메트리 경로 유지) · HILS 7/7 · browser PASS
+**Decisions**: 사용자 보고 "미션까지 잘 되다가 이제 go-to/RTL/이륙 다 안됨(더 나빠짐)". 원인: M30에서 FENCE_ENABLE/FENCE_ALT_MAX PARAM_SET을 심으로 forward하게 했는데, QGC Fence 페이지를 열거나 펜스를 만지면 QGC가 FENCE_ENABLE를 write → 브리지가 altMax=FENCE_ALT_MAX(기본 120m)를 심에 전달 → 고도 120m 초과 시 지오펜스 위반으로 자동 RTL 회피. 사용자 미션/go-to가 120~150m라 계속 복귀당해 "안 되는" 것처럼 보임. 수정: FENCE_* 파라미터를 순수 compat 스텁으로 되돌리고 자동 altMax forward 제거(FENCE_FORWARDED 삭제). 지오펜스는 이제 사용자가 **직접 그려 업로드한 지오메트리(원/다각형)** 만 집행 — 명시적 opt-in. FENCE_ENABLE 기본값도 ArduPlane과 동일하게 0으로.
+**Notes**: 교훈 — 파라미터 조회/편집이 조용히 비행 동작을 바꾸면 안 됨. 고도 펜스는 사용자가 명시적으로 원할 때 별도 경로로. 브리지 재시작 + 브라우저 새로고침하면 잔여 펜스도 초기화됨.
