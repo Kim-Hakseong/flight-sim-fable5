@@ -616,3 +616,21 @@
 **Files changed**: bridge/mavlink.mjs(+MISSION_ITEM 39), bridge/server.mjs, tests/{gcs-loop-check,mavlink}.test.mjs (+ fdm-uav-gcs/backend 병행)
 **Tests**: unit 94/94 · gcs PASS(신규: MISSION_ITEM current=2 float → ACK+goto) · HILS 7/7 · browser PASS · backend PASS
 **Decisions**: 피드백8 수정(MISSION_ITEM_INT current=2) 후에도 "Guided Mode Item 미응답" 지속. QGC 소스(MissionManager::writeArduPilotGuidedMissionItem) 직접 확인: ArduPilot guided go-to는 **구형 MISSION_ITEM(id 39, float 도 단위 좌표), current= altChangeOnly?3:2** 를 encode해 전송하고 MISSION_ACK를 기다림. 우리는 MISSION_ITEM(39)을 메시지 테이블에 없어 디코드조차 안 함 → 완전 무시 → 미응답. 수정: mavlink.mjs에 MISSION_ITEM(39, crc_extra 254) 추가(encode/decode 라운드트립 검증), 브리지/백엔드에서 current 2·3이면 goto(lat=x, lon=y 도 단위 그대로) + MISSION_ACK. 교훈: MAVLink 상대 구현은 추측 말고 QGC 소스로 확인.
+
+## 2026-07-16 — 린 리팩터: plant-model 납품 스코프 전면 제거, QGC 연동 시뮬로 재집중
+
+**Status**: GREEN
+**Files changed**: 삭제 — native/ 전체(fdm.c/.h, fmi2_model.c, nivs_model.c, channels.json, gen-*.mjs, golden/cov/mcdc, Makefile, ni_stub, INTERFACE.md, 빌드 산출물 .fmu/.so), bridge/plant.mjs, bridge/sitl.mjs, tests/plant-check.mjs, tests/sitl-check.mjs, COMPLIANCE-DO331.md, MARKET.md, docs/VERISTAND-GUIDE.md · 수정 — src/vehicle.js(sim-as-plant `direct` 훅 제거), src/hilspanel.js(배지·채널모니터 재구성), tests/coverage-check.mjs, .github/workflows/ci.yml, package.json, README.md, PRD.md
+**Tests**: unit 94/94 · coverage PASS · gcs PASS · HILS 7/7 · browser PASS(console 0, badge·scenario 8·channel rows 32, __advance 재현) · determinism 유지
+**Decisions**:
+- 사용자 지시: 이 프로젝트는 "간결하게 QGC로 컨트롤 및 연동 시뮬레이션을 보여주는 화면" 역할만. C 컨버터/VeriStand .so/FMU 등 납품 모델은 별도(SCADE/Simulink)로 진행 → 여기서 전부 제거해 린하게.
+- 제거 스코프: M20(sim-as-plant), M21(ArduPilot SITL), M23~M25(native C99·VeriStand·FMU), M29(FMI 파라미터화), 시장조사·DO-331 트레이서빌리티. PRD에 제거 사유 명시(재추가 금지).
+- hilspanel: 배지에서 FMI/VeriStand/.so/golden 문구 제거 → "fdm-uav 6-DOF · 60 Hz fixed-step · deterministic". 채널 모니터는 삭제된 native/channels.json fetch를 인라인 CHANNELS 신호맵(12 inport + 20 outport)으로 대체 — 값은 매 프레임 vehicle에서 라이브 read. 유용한 HILS 신호 뷰라 기능은 보존.
+- vehicleStep 시그니처에서 `direct`(외부 컨트롤러 주입) 인자 제거. crash 감지의 `&& !direct` / `else if (direct)` 분기 삭제.
+- CI: native golden/nivs/spec/fmu/coverage/mcdc·gcc-14·plant-check·sitl-check·FMU 아티팩트 스텝 삭제. 유지: unit, JS coverage, gcs loop, HILS bench, browser gate, screenshot.
+- package.json: plant/check:plant/sitl/check:sitl 스크립트 삭제.
+**Next**:
+- QGC 실테스트 계속(미션/guided go-to/RTL 실물 확인). 필요 시 프로토콜 미세조정.
+**Notes**:
+- 납품용 plant model은 별도 저장소(예: fdm-uav-gcs)에서 진행. 이 repo는 이제 QGC 컨트롤 + 시뮬레이션 화면에만 집중.
+- vehicle.js 커버리지 floor 95 유지(현 97.5). `direct` 분기 제거로 커버리지 오히려 개선.

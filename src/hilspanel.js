@@ -1,14 +1,38 @@
-// HILS-delivery overlay: shows the DELIVERABLE on screen. RENDER-ONLY.
-//  - badge: model identity (name · formats · base rate · determinism pedigree)
-//  - channel monitor (KeyC): the exact delivered channel map, names and values as
-//    a VeriStand rig would see them — loaded from native/channels.json, the same
-//    single source of truth that generates the FMU/VeriStand wrappers and
-//    INTERFACE.md. Outport values are computed with the wrappers' NED/FRD mapping.
+// HILS overlay: on-screen readout of the sim as a HILS plant. RENDER-ONLY.
+//  - badge: model identity (name · base rate · determinism).
+//  - channel monitor (KeyC): the sim's I/O signals — control/environment inports
+//    and state outports — in the NED/FRD convention a HILS rig expects. The signal
+//    list is inlined here (single source of truth); values are read live from the
+//    vehicle each frame.
 //  - scenario toggles: one-click fault injection through the SAME surfaces the
 //    tests and the engineering console use (injectFault / servo faults / params).
 
 import { airData, toFRD } from './physics.js';
 import { eulerFromQuat } from './telemetry.js';
+
+// Signal map (name + unit), grouped inports (controller/env → model) and outports
+// (model → instrumentation). Names match the keys channelValues() produces.
+const CHANNELS = {
+  inports: [
+    { name: 'Cmd_Aileron', unit: '' }, { name: 'Cmd_Elevator', unit: '' },
+    { name: 'Cmd_Rudder', unit: '' }, { name: 'Cmd_Throttle', unit: '' },
+    { name: 'Env_WindN', unit: 'm/s' }, { name: 'Env_WindE', unit: 'm/s' },
+    { name: 'Env_Turb', unit: '×' },
+    { name: 'Flt_Aileron', unit: '' }, { name: 'Flt_Elevator', unit: '' },
+    { name: 'Flt_Rudder', unit: '' }, { name: 'Flt_Throttle', unit: '' },
+    { name: 'Sim_Reset', unit: '' },
+  ],
+  outports: [
+    { name: 'Pos_N', unit: 'm' }, { name: 'Pos_E', unit: 'm' }, { name: 'Pos_D', unit: 'm' },
+    { name: 'Vel_N', unit: 'm/s' }, { name: 'Vel_E', unit: 'm/s' }, { name: 'Vel_D', unit: 'm/s' },
+    { name: 'Att_Roll', unit: 'rad' }, { name: 'Att_Pitch', unit: 'rad' }, { name: 'Att_Yaw', unit: 'rad' },
+    { name: 'Rate_P', unit: 'rad/s' }, { name: 'Rate_Q', unit: 'rad/s' }, { name: 'Rate_R', unit: 'rad/s' },
+    { name: 'Air_Va', unit: 'm/s' }, { name: 'Air_Alpha', unit: 'rad' }, { name: 'Air_Beta', unit: 'rad' },
+    { name: 'Act_Aileron', unit: '' }, { name: 'Act_Elevator', unit: '' },
+    { name: 'Act_Rudder', unit: '' }, { name: 'Act_Throttle', unit: '' },
+    { name: 'WoW', unit: '' },
+  ],
+};
 
 const CSS = `
 #hilsbadge { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
@@ -63,39 +87,32 @@ export function createHilsPanel({ getVehicle }) {
   const badge = document.createElement('div');
   badge.id = 'hilsbadge';
   badge.innerHTML =
-    '<b>fdm-uav</b> plant model · FMI 2.0 / VeriStand / .so · 60 Hz fixed-step · ' +
-    '<span class="ok">deterministic · golden-validated</span>';
+    '<b>fdm-uav</b> 6-DOF flight model · 60 Hz fixed-step · ' +
+    '<span class="ok">deterministic</span>';
   document.body.appendChild(badge);
 
-  // --- channel monitor (built from the delivered channels.json) ----------------
+  // --- channel monitor (built from the inlined CHANNELS signal map) -------------
   const mon = document.createElement('div');
   mon.id = 'chanmon';
-  mon.innerHTML = '<h3>CHANNEL MONITOR</h3><div>loading channels.json…</div>';
   document.body.appendChild(mon);
-  let rows = null; // [{name, unit, cell}]
-  fetch('native/channels.json').then((r) => r.json()).then((ch) => {
-    mon.innerHTML = '';
-    rows = { in: [], out: [] };
-    for (const [key, title, list] of [['in', 'INPORTS (제어기/환경 → 모델)', ch.inports], ['out', 'OUTPORTS (모델 → 계측)', ch.outports]]) {
-      const h = document.createElement('h3');
-      h.textContent = title;
-      mon.appendChild(h);
-      const tbl = document.createElement('table');
-      for (const c of list) {
-        const tr = document.createElement('tr');
-        const cell = document.createElement('td');
-        cell.className = 'v';
-        tr.innerHTML = `<td>${c.name}</td>`;
-        tr.appendChild(cell);
-        tr.insertAdjacentHTML('beforeend', `<td class="u">${c.unit}</td>`);
-        tbl.appendChild(tr);
-        rows[key].push({ name: c.name, cell });
-      }
-      mon.appendChild(tbl);
+  const rows = { in: [], out: [] }; // [{name, cell}]
+  for (const [key, title, list] of [['in', 'INPORTS (제어기/환경 → 모델)', CHANNELS.inports], ['out', 'OUTPORTS (모델 → 계측)', CHANNELS.outports]]) {
+    const h = document.createElement('h3');
+    h.textContent = title;
+    mon.appendChild(h);
+    const tbl = document.createElement('table');
+    for (const c of list) {
+      const tr = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.className = 'v';
+      tr.innerHTML = `<td>${c.name}</td>`;
+      tr.appendChild(cell);
+      tr.insertAdjacentHTML('beforeend', `<td class="u">${c.unit}</td>`);
+      tbl.appendChild(tr);
+      rows[key].push({ name: c.name, cell });
     }
-  }).catch(() => {
-    mon.innerHTML = '<h3>CHANNEL MONITOR</h3><div>channels.json unavailable on this host</div>';
-  });
+    mon.appendChild(tbl);
+  }
 
   // --- scenario toggle bar ------------------------------------------------------
   const bar = document.createElement('div');

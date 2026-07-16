@@ -121,9 +121,7 @@ export function vehicleClearServoFault(v, channel) {
 }
 
 // One fixed step. stick drives MANUAL mode only (null = hands off).
-// `direct` (sim-as-plant): raw surface commands from an EXTERNAL controller —
-// the onboard AP/SAS is bypassed entirely; only the arm gate still applies.
-export function vehicleStep(v, dt, stick = null, direct = null) {
+export function vehicleStep(v, dt, stick = null) {
   // Control path sees ONLY estimated state (+ the WoW discrete).
   const rateEst = v.readings?.gyro
     ? v.readings.gyro.map((x, i) => x - v.att.bias[i])
@@ -139,7 +137,7 @@ export function vehicleStep(v, dt, stick = null, direct = null) {
   // WELL outside a normal — even gusty, banked-onto-final — landing (which reaches
   // ~35° roll / ~25° pitch), so only a genuine roll-over / tumble trips it.
   let crashed = v.crashed;
-  if (!crashed && v.state.pos[1] <= 0.5 && !direct) {
+  if (!crashed && v.state.pos[1] <= 0.5) {
     const e = eulerFromQuat(v.state.quat);
     if (Math.abs(e.roll) > 1.2 || Math.abs(e.pitch) > 0.9) crashed = true; // ~69° / ~52°
   }
@@ -149,8 +147,6 @@ export function vehicleStep(v, dt, stick = null, direct = null) {
   if (crashed) {
     armed = false;
     controls = { aileron: 0, elevator: 0, rudder: 0, throttle: 0 };
-  } else if (direct) {
-    controls = direct;
   } else if (ap.mode === MODES.MANUAL && !ap.landing) {
     // GCS joystick wins while fresh (< 1 s); keyboard/neutral is the fallback.
     const gcs = v.gcsStickAge < 1 ? v.gcsStick : null;

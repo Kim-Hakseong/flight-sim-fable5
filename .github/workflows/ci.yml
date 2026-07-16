@@ -15,22 +15,12 @@ jobs:
           node-version: 22
       - name: Unit tests
         run: npm test
-      - name: JS reference-model structural coverage
+      - name: JS model structural coverage
         run: node tests/coverage-check.mjs
       - name: GCS loop check (bridge + fake-GCS UDP)
         run: node tests/gcs-loop-check.mjs
       - name: HILS scenario bench
         run: node tests/hils-run.mjs
-      - name: Sim-as-plant lockstep check (external FC over UDP)
-        run: node tests/plant-check.mjs
-      - name: ArduPilot SITL JSON adapter check
-        run: node tests/sitl-check.mjs
-      - name: Install gcc-14 (for MC/DC -fcondition-coverage)
-        run: sudo apt-get update && sudo apt-get install -y gcc-14
-      - name: Native C core — golden cross-validation + coverage + .so/FMU build
-        run: make -C native golden nivs spec fmu-check coverage so fmu
-      - name: Native C core — MC/DC condition coverage (gcc-14)
-        run: make -C native mcdc CC=gcc-14
       - name: Browser gate (headless Chrome, console-0 + determinism + DOM)
         env:
           CHROME_BIN: /usr/bin/google-chrome
@@ -41,11 +31,4 @@ jobs:
         with:
           name: sim-screenshot
           path: tests/artifacts/sim.png
-          if-no-files-found: ignore
-      - name: Upload FMU deliverable
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fdm-uav-fmu
-          path: native/fdm-uav.fmu
           if-no-files-found: ignore

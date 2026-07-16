@@ -6,10 +6,15 @@
 ## 1. Vision
 
 A **browser-based, deterministic 6-DOF flight simulator that flies under a Ground
-Control Station (QGroundControl) over MAVLink.** It exists to exercise and demonstrate
-the full GCS loop — telemetry up, commands and missions down, the vehicle responds —
-and to serve as a HILS/engineering bench (inject sensor faults, watch the estimator,
-tune gains live). It is NOT a game.
+Control Station (QGroundControl) over MAVLink.** Its one job is to exercise and
+demonstrate the full GCS loop — telemetry up, commands and missions down, the vehicle
+responds — precisely and with depth, and to serve as a HILS/engineering bench (inject
+sensor faults, watch the estimator, tune gains live). It is NOT a game.
+
+**Scope boundary.** This project is ONLY the QGC control + integrated-simulation
+screen. A deliverable/productized plant model (native C core, FMU, VeriStand `.so`,
+SCADE/Simulink port, DO-331 traceability) is explicitly OUT OF SCOPE here and lives
+in a separate repository. Do not add it back to this project.
 
 Deployed as a static site (GitHub Pages / any static host). The MAVLink bridge runs
 locally (a Node process) because it speaks UDP to QGroundControl.
@@ -160,76 +165,25 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   v1: decode both always, reply in the version the GCS last spoke.
   *Verify:* v1/v2 round-trips, truncation restored, bridge auto-upgrades.
 
-- **M20 — Sim-as-plant.** Headless vehicle hosted in node (`npm run plant`): an
-  EXTERNAL controller closes the loop over UDP JSON lockstep (controls in → sensors
-  out), which is the real meaning of HILS. QGC telemetry keeps flowing.
-  *Verify:* an external test controller flies the plant; lockstep is deterministic.
+- **M22 — Engineering visuals refresh.** Keep the airframe visual honest to the
+  underlying small-UAV dynamics with a clean procedural render pass (tone mapping,
+  gradient sky dome, warm key light, moving control surfaces + prop). RENDER-ONLY:
+  the flight model is untouched, determinism preserved.
 
-- **M21 — ArduPilot SITL JSON adapter.** Speak ArduPilot's SITL "JSON" backend
-  protocol on UDP 9002: binary servo packets (magic/frame_rate/frame_count/pwm[16])
-  in, one-line JSON state (timestamp/imu/position/attitude/velocity/airspeed,
-  NED + FRD) out, in strict lockstep with frame_count dedupe and reset-on-restart.
-  Physics truth is returned (ArduPilot does its own sensor modelling); wind via env.
-  *Verify:* a fake-ArduPilot driver exercises the protocol end-to-end (lockstep
-  timing, dedupe, restart, control surface signs, ground roll accelerates).
+- **M28 — HILS demo overlay.** The browser demo surfaces the sim's HILS character:
+  (a) a model-identity badge (fdm-uav 6-DOF · 60 Hz fixed-step · deterministic),
+  (b) a live CHANNEL MONITOR (KeyC) rendering the sim's I/O signal map (control/
+  environment inports, state outports) in NED/FRD, read live from the vehicle, and
+  (c) one-click fault-scenario toggles (GPS dropout, gyro/mag bias, pitot drop, servo
+  jam/slow, heavy turbulence, clear-all) driving the same injection surfaces as tests.
+  Render-only. *Verify:* console-0, DOM gate covers the panel, determinism untouched.
 
-- **M22 — Cinematic F-16 visuals.** Replace the UAV visual with a procedural
-  F-16-style airframe (true ~15 m scale, moving stabilators/flaperons/rudder,
-  throttle-driven afterburner) and a cinematic render pass (ACES tone mapping,
-  gradient sky dome, warm key light). RENDER-ONLY: the flight model stays the
-  validated small-UAV dynamics; a true F-16 flight model is future work.
-
-- **M23 — Portable C99 flight-dynamics core (the "yolk").** Port the validated
-  plant (rigid-body 6-DOF, actuators+faults, ISA, Dryden wind, ground model) to a
-  single dependency-free C99 file (`native/fdm.c`) — the deployable asset for
-  NI VeriStand (Linux RT .so), FMU, and any RT target. The JS sim is the REFERENCE:
-  a generator emits golden vectors (point-wise forces/moments + full trajectories,
-  turbulence on) and a C harness must reproduce them (tight point tolerances,
-  bounded trajectory drift) — built and gated in CI.
-  *Verify:* `make -C native golden` passes; `make -C native so` builds the .so.
-
-- **M24 — VeriStand model wrapper + interface spec.** Wrap the C core in the NI
-  VeriStand Model Framework shape (USER_Initialize/USER_TakeOneStep; Inports =
-  surfaces + environment + fault switches, Outports = NED state/air data/actuators/
-  WoW) compiled against a local stub of ni_modelframework.h for CI; swap NI's real
-  SDK header on the customer toolchain. Auto-generate the model interface
-  specification (diagram + signal tables, 참고자료 PDF 양식 준거) from one source
-  of truth shared with the wrapper.
-  *Verify:* `make -C native nivs` compile-checks the wrapper; INTERFACE.md
-  regenerates deterministically and matches the wrapper's channel list.
-
-- **M25 — FMI 2.0 FMU export (primary delivery format).** Market research (MARKET.md)
-  found FMU — not a bespoke .so — is NI VeriStand's officially supported plant-model
-  format (VeriStand 2019+ runs FMI 2.0 co-sim FMUs on PXI Linux RT), and it also
-  covers RTNgine/Simulink/SCADE/dSPACE. So the FDM core ships as a Co-Simulation FMU:
-  modelDescription.xml generated from channels.json (same source of truth as the
-  VeriStand wrapper + INTERFACE.md), fmi2 C entry points wrapping fdm.c, packaged
-  as a .fmu zip. .so stays as a secondary VeriStand-native path.
-  *Verify:* `make -C native fmu` builds fdm-uav.fmu; a no-dep node FMI harness
-  loads modelDescription.xml, drives the built .so through fmi2 calls, and matches
-  a JS golden trajectory (turbulence off) within trajectory tolerance.
-
-- **M28 — HILS-delivery demo overlay.** Make the browser demo SHOW the deliverable:
-  (a) a model-identity badge (fdm-uav · FMI 2.0/VeriStand · 60 Hz fixed-step ·
-  deterministic · golden-validated), (b) a live CHANNEL MONITOR (KeyC) rendering the
-  exact delivered channel map — names/values as VeriStand would see them, loaded from
-  native/channels.json (single source of truth), and (c) one-click fault-scenario
-  toggles (GPS dropout, gyro/mag bias, pitot drop, servo jam/slow, heavy turbulence,
-  clear-all) driving the same injection surfaces as tests. Render-only.
-  *Verify:* console-0, DOM gate covers the new panel, determinism untouched.
-
-- **M29 — Airframe parameterization (model → model FRAME).** The aero database,
-  mass/inertia, prop, actuator and ground constants move from compile-time #defines
-  to an `fdm_coef` struct (defaults = the golden-validated Aerosonde set) exposed as
-  **FMI parameters** (vref 200+, generated from channels.json like everything else)
-  — a customer re-targets the model to their own Datcom/AVL-derived airframe with
-  NO recompilation. Golden validation stays pinned to the defaults (bit-identical:
-  proof the refactor didn't touch the math); parameter EFFECTS are verified
-  behaviorally (heavier aircraft sinks, etc.) at both the C API and the real fmi2
-  ABI. JS reference stays fixed-coefficient (documented). VeriStand-native wrapper
-  keeps defaults for now (FMU is the parameterized path).
-  *Verify:* golden bit-identical; struct↔channels.json order gated; fmi2SetReal on
-  a parameter changes the trajectory as physics dictates.
+> **Removed from scope (2026-07-16).** Earlier drafts carried M20 (sim-as-plant
+> external-controller lockstep), M21 (ArduPilot SITL adapter), and M23–M25 / M29
+> (native C99 core, VeriStand wrapper, FMU export, FMI airframe parameterization),
+> plus market-research and DO-331 traceability work. These productized-model
+> milestones were pruned to keep this repo a lean QGC-control + simulation screen;
+> that work will proceed separately (SCADE / Simulink). Do not re-add here.
 
 ## 5. Non-goals
 

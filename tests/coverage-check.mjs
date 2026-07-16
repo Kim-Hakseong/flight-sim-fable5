@@ -1,7 +1,7 @@
-// Structural coverage gate for the JS REFERENCE MODEL modules (the golden source
-// the C/FMU deployable is validated against). Uses node's built-in coverage
-// (zero deps). Browser-only modules (main/scene/engineering/missionLink) are
-// excluded — they are not model code and never run under `node --test`.
+// Structural coverage gate for the sim's model modules (physics, estimators,
+// autopilot, missions — the code the GCS loop depends on). Uses node's built-in
+// coverage (zero deps). Browser-only modules (main/scene/engineering/missionLink)
+// are excluded — they are not model code and never run under `node --test`.
 //
 // Per-module line-coverage floors are asserted; a regression fails CI.
 import { spawnSync } from 'node:child_process';
