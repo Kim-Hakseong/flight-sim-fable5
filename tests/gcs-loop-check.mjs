@@ -130,6 +130,17 @@ try {
   const armEvt = await sseWait((e) => e.type === 'arm');
   check(armEvt?.value === 0, 'DISARM relayed to the sim over SSE');
 
+  // ARM must reflect in the HEARTBEAT's ARMED bit immediately: QGC's takeoff arms
+  // first and waits for the ARMED heartbeat before sending takeoff — a laggy
+  // confirmation makes it abort with "Vehicle failed to arm".
+  received.delete('HEARTBEAT');
+  await sendToBridge('COMMAND_LONG', {
+    param1: 1, param2: 0, param3: 0, param4: 0, param5: 0, param6: 0, param7: 0,
+    command: 400, target_system: 1, target_component: 1, confirmation: 0,
+  });
+  const hbArm = await waitFor('HEARTBEAT', 500); // well under the 1 Hz interval
+  check((hbArm?.fields.base_mode & 128) === 128, 'HEARTBEAT reflects ARM immediately');
+
   await sendToBridge('SET_MODE', { custom_mode: 15, target_system: 1, base_mode: 1 });
   const modeEvt = await sseWait((e) => e.type === 'mode');
   check(modeEvt?.custom === 15, 'SET_MODE(GUIDED) relayed to the sim over SSE');

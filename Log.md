@@ -668,3 +668,11 @@
 - (대기) AUTO 유도 L1 개선, 지오펜스 3D 시각화(옵션).
 **Notes**:
 - 이 프로젝트는 외부 의존성 0 — 윈도우에서 Node.js만 있으면 `npm run bridge`로 바로 실행(npm install 불필요).
+
+## 2026-07-16 — QGC 실테스트 피드백 10: "Vehicle failed to arm" — ARM 낙관적 반영
+
+**Status**: GREEN
+**Files changed**: bridge/server.mjs, tests/gcs-loop-check.mjs
+**Tests**: unit 109/109 · gcs PASS(신규: HEARTBEAT가 ARM 즉시 반영) · HILS 7/7 · browser PASS
+**Decisions**: 사용자 보고 "잘 되다 안된다" — QGC 이륙 시 간헐적 "Unable to start takeoff: Vehicle failed to arm". 원인: QGC 이륙은 ①ARM 명령 → ②HEARTBEAT의 ARMED 비트로 시동 확인 대기 → ③확인되면 takeoff 순서인데, ARM(400)에 낙관적 반영이 없어 시동 확인이 sim→telemetry(10Hz)→HEARTBEAT(1Hz) 왕복(~1s+)을 기다림 → QGC 타임아웃(간헐적). 모드 변경 때(relayMode)와 동일한 계열 버그. 수정: relayArm() 헬퍼 — ARM 명령 릴레이 시 vehicle.armed 즉시 반영 + HEARTBEAT 즉시 전송. NAV_TAKEOFF(22)도 armed+TAKEOFF 모드를 낙관적으로 반영. sim이 telemetry로 확정(불일치 시 정정).
+**Notes**: 낙관적 반영 3종 완비 — 모드(relayMode)/시동(relayArm)/이륙. QGC의 명령→확인 타임아웃 계열 이슈 정리됨.

@@ -8,7 +8,7 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encode, decode } from './mavlink.mjs';
 import { PARAM_DEFS, PARAM_TYPE_REAL32, defaultParams, clampParam } from '../src/params.js';
-import { MODE_NAMES } from '../src/autopilot.js';
+import { MODES, MODE_NAMES } from '../src/autopilot.js';
 import { COMPAT_PARAMS, FENCE_FORWARDED } from './compat-params.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -57,10 +57,14 @@ const MAV_RESULT_UNSUPPORTED = 3;
 function handleCommandLong(f) {
   switch (f.command) {
     case 400: // MAV_CMD_COMPONENT_ARM_DISARM
-      pushCommand({ type: 'arm', value: f.param1 >= 0.5 ? 1 : 0 });
+      relayArm(f.param1 >= 0.5);
       return MAV_RESULT_ACCEPTED;
     case 22: // MAV_CMD_NAV_TAKEOFF (param7 = altitude)
+      // QGC's takeoff = arm, wait for the ARMED heartbeat, then this. Reflect arm
+      // + TAKEOFF mode optimistically so QGC doesn't time out on either step.
       pushCommand({ type: 'takeoff', alt: f.param7 > 1 ? f.param7 : 50 });
+      vehicle = { ...vehicle, armed: true, customMode: MODES.TAKEOFF };
+      sendHeartbeat();
       return MAV_RESULT_ACCEPTED;
     case 21: // MAV_CMD_NAV_LAND
       pushCommand({ type: 'land' });
@@ -350,6 +354,17 @@ setInterval(sendHeartbeat, 1000);
 function relayMode(custom) {
   pushCommand({ type: 'mode', custom });
   vehicle = { ...vehicle, customMode: custom >>> 0 };
+  sendHeartbeat();
+}
+
+// Relay ARM/DISARM to the sim AND reflect it in the HEARTBEAT's base_mode ARMED
+// bit immediately. QGC's guided takeoff arms first, then waits for the vehicle to
+// report ARMED before sending the takeoff — without the optimistic reflection that
+// confirmation waits on the sim→telemetry→heartbeat round-trip and QGC gives up
+// with "Vehicle failed to arm". The sim confirms (or corrects) via telemetry.
+function relayArm(armed) {
+  pushCommand({ type: 'arm', value: armed ? 1 : 0 });
+  vehicle = { ...vehicle, armed };
   sendHeartbeat();
 }
 
