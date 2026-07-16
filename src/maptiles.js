@@ -38,7 +38,14 @@ function tileBounds(x, y, z) {
   };
 }
 
-export function createMapTiles(THREE, scene, home = HOME) {
+// Tiles sit below the runway (0.04) so it stays on top, and the base ground drops
+// this far when the map is on — a big gap so the two ground planes never z-fight
+// (0.03 m of separation flickers badly at flight distances), while the base stays
+// visible as distant filler beyond the tile grid.
+const TILE_Y = -0.15;
+const BASE_DROP_Y = -25;
+
+export function createMapTiles(THREE, scene, baseGround = null, home = HOME) {
   const group = new THREE.Group();
   group.visible = false;
   scene.add(group);
@@ -63,10 +70,13 @@ export function createMapTiles(THREE, scene, home = HOME) {
       const north = (cLat - home.lat) * D2R * R_EARTH;
       const w = (b.lonE - b.lonW) * D2R * R_EARTH * cosLat;
       const h = (b.latN - b.latS) * D2R * R_EARTH;
-      const mat = new THREE.MeshLambertMaterial({ color: 0x8a8a8a }); // grey until loaded
+      // polygonOffset biases tiles slightly back so the runway on top always wins.
+      const mat = new THREE.MeshLambertMaterial({
+        color: 0x8a8a8a, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+      });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.position.set(east, 0.03, -north); // just above ground (0), below runway (0.04)
+      mesh.position.set(east, TILE_Y, -north);
       mesh.receiveShadow = true;
       group.add(mesh);
       tiles.push({ mat, x: tx, y: ty, tex: { satellite: null, road: null } });
@@ -75,6 +85,9 @@ export function createMapTiles(THREE, scene, home = HOME) {
 
   let mode = 'off';
   function apply() {
+    // Drop the base green ground far below when the map is on so it can't z-fight
+    // the tiles (it still fills the horizon beyond the grid); restore it when off.
+    if (baseGround) baseGround.position.y = mode === 'off' ? 0 : BASE_DROP_Y;
     if (mode === 'off') { group.visible = false; return; }
     group.visible = true;
     for (const t of tiles) {
