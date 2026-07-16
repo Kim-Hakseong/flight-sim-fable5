@@ -634,3 +634,22 @@
 **Notes**:
 - 납품용 plant model은 별도 저장소(예: fdm-uav-gcs)에서 진행. 이 repo는 이제 QGC 컨트롤 + 시뮬레이션 화면에만 집중.
 - vehicle.js 커버리지 floor 95 유지(현 97.5). `direct` 분기 제거로 커버리지 오히려 개선.
+
+## 2026-07-16 — M30: 지오펜스(Geofence) — QGC Fence 업로드 + 심 위반 회피
+
+**Status**: GREEN
+**Files changed**: src/geofence.js(신규), src/vehicle.js, bridge/mavlink.mjs, bridge/server.mjs, bridge/compat-params.mjs, tests/{geofence.test.mjs(신규), mavlink.test.mjs, nav-loop.test.mjs, gcs-loop-check.mjs, coverage-check.mjs}, PRD.md, README.md
+**Tests**: unit 109/109 · coverage PASS(geofence 100%, vehicle 97.8%) · gcs PASS(fence 업로드/다운로드 핸드셰이크) · HILS 7/7 · browser PASS
+**Decisions**:
+- 사용자 요청: "비행금지구역 추가해". QGC Fence 편집기는 지오펜스를 **미션 프로토콜 + mission_type=1**로 업로드 → 같은 COUNT→REQUEST→ITEM→ACK 핸드셰이크를 mission_type으로 분기.
+- **MAVLink 확장 필드 지원 추가**: mission_type은 v2 전용 extension field. mavlink.mjs에 `def.ext` 개념 도입 — base 길이(crc_extra 대상, v1 정확일치)와 full 길이(base+ext, v2 상한) 분리. v1은 base만 인코딩(ext 미전송→0), v2는 full 인코딩 후 trailing-zero 절단. crc_extra는 base 필드만 대상이라 상수 불변. MISSION_COUNT/REQUEST_LIST/REQUEST_INT/REQUEST/ITEM_INT/ACK에 `ext: mission_type` 부여.
+- **src/geofence.js(순수)**: buildFence(items→로컬 원/다각형), fenceBreach(pos, fence, altMax)→위반 라벨|null, pointInPolygon(ray-casting). 원/다각형 inclusion+exclusion + 고도 상한(FENCE_ALT_MAX). 폴리곤 정점은 연속 아이템을 param1 개수로 그룹핑.
+- **vehicle.js 집행**: `fence`/`fenceAltMax`/`fenceBreach` 상태 + `fence` 커맨드(부분 갱신: items 재구성, altMax 설정, 빈 items=해제). vehicleStep가 **추정 위치**로 매 스텝 위반 검사 — 비행 중 위반 시 RTL로 회피(crash 래치와 달리 복귀 가능, 다시 안으로 들어오면 자동 해제). telemetry faults에 `fence` 키로 실어 기존 STATUSTEXT edge 머신이 경고 발화.
+- **bridge/server.mjs**: startUpload/finishUpload에 mtype 도입. mission_type=1이면 fenceItems에 수집 후 `fence` SSE 커맨드 push. 다운로드(REQUEST_LIST/REQUEST_INT)도 mission_type 분기. FENCE_ALT_MAX/FENCE_ENABLE PARAM_SET은 심으로 forward(FENCE_FORWARDED).
+- compat-params에 FENCE_* 스텁 10종 추가(QGC Fence 페이지 파라미터 조회 대응). 집행은 "업로드된 지오메트리가 있으면 ON" — FENCE_ENABLE은 altMax 게이팅에만 사용.
+- 교훈 재확인: MAVLink 확장 필드는 v1에 없고 v2에서만 실림 — v1 정확길이 검사를 base로, v2 상한을 full로 분리해야 기존 v1 미션 경로가 안 깨짐.
+**Next**:
+- (별건 추천) AUTO 웨이포인트 유도를 L1(레그 추종+조기전환)으로 개선 — 현재 point-pursuit 오버슈트 루프 해소.
+- (옵션) 3D 씬에 펜스 지오메트리 시각화(현재는 QGC에만 표시).
+**Notes**:
+- 사용자 QGC 실테스트에서 이륙/복귀/go-to 정상 확인됨. 미션 경로가 뱅글뱅글 도는 건 버그 아님(고정익 최소선회반경 ~134m + 단순 point-pursuit) — L1 개선은 별도 진행 대기.

@@ -178,6 +178,19 @@ locally (a Node process) because it speaks UDP to QGroundControl.
   jam/slow, heavy turbulence, clear-all) driving the same injection surfaces as tests.
   Render-only. *Verify:* console-0, DOM gate covers the panel, determinism untouched.
 
+- **M30 — Geofence.** QGC's Fence editor uploads geofence geometry over the mission
+  protocol with mission_type=1 (a v2 extension field); the bridge forks the same
+  COUNT→REQUEST→ITEM→ACK handshake on mission_type, converts the fence to local
+  geometry, and relays it to the sim. `src/geofence.js` (pure): circle/polygon
+  inclusion+exclusion + an altitude ceiling (FENCE_ALT_MAX). The sim tests the
+  ESTIMATED position each step; a breach diverts to RTL (recoverable, unlike the
+  crash latch) and raises a STATUSTEXT via the fault-edge channel. FENCE_* params
+  answer the fence-page queries.
+  *Verify:* geofence geometry unit-tested (point-in-polygon, circle/polygon/alt
+  breach, item→geometry build); mission_type extension round-trips on v2 (dropped
+  on v1); the bridge fence upload+download handshake round-trips; a breach diverts
+  to RTL and surfaces in telemetry faults.
+
 > **Removed from scope (2026-07-16).** Earlier drafts carried M20 (sim-as-plant
 > external-controller lockstep), M21 (ArduPilot SITL adapter), and M23–M25 / M29
 > (native C99 core, VeriStand wrapper, FMU export, FMI airframe parameterization),

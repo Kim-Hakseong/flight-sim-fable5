@@ -195,6 +195,39 @@ try {
   const item = await waitFor('MISSION_ITEM_INT');
   check(item?.fields.seq === 1 && item.fields.x === plan[1].x, 'MISSION_REQUEST_INT(1) → stored item back');
 
+  // 3b-fence) Geofence upload rides the SAME handshake with mission_type=1. That
+  // field only exists on the v2 wire, so QGC (and this test) send fence messages
+  // as v2. MAV_CMD 5003 = circle inclusion (param1 = radius m).
+  const sendV2 = (name, fields) =>
+    new Promise((r) => gcs.send(encode(name, fields, { v2: true }), bridgeAddr.port, bridgeAddr.address, r));
+  const fenceItem = {
+    param1: 300, param2: 0, param3: 0, param4: 0,
+    x: Math.round(37.4449 * 1e7), y: Math.round(126.4656 * 1e7), z: 0,
+    seq: 0, command: 5003, target_system: 1, target_component: 1, frame: 3,
+    current: 0, autocontinue: 1, mission_type: 1,
+  };
+  received.delete('MISSION_REQUEST_INT');
+  received.delete('MISSION_ACK');
+  await sendV2('MISSION_COUNT', { count: 1, target_system: 1, target_component: 1, mission_type: 1 });
+  const fReq = await waitFor('MISSION_REQUEST_INT');
+  check(fReq?.fields.seq === 0 && fReq.fields.mission_type === 1, 'fence COUNT(type=1) → REQUEST_INT(0, type=1)');
+  await sendV2('MISSION_ITEM_INT', fenceItem);
+  const fAck = await waitFor('MISSION_ACK');
+  check(fAck?.fields.type === 0 && fAck.fields.mission_type === 1, 'fence upload complete → MISSION_ACK(type=1)');
+  const fenceEvt = await sseWait((e) => e.type === 'fence');
+  check(fenceEvt?.items?.length === 1 && fenceEvt.items[0].command === 5003 && fenceEvt.items[0].param1 === 300,
+    'fence relayed to the sim over SSE (circle inclusion, r=300)');
+
+  // Download the fence back (mission_type=1), like QGC verifying its upload.
+  received.delete('MISSION_COUNT');
+  await sendV2('MISSION_REQUEST_LIST', { target_system: 1, target_component: 1, mission_type: 1 });
+  const fCnt = await waitFor('MISSION_COUNT');
+  check(fCnt?.fields.count === 1 && fCnt.fields.mission_type === 1, 'fence REQUEST_LIST(type=1) → COUNT(1, type=1)');
+  received.delete('MISSION_ITEM_INT');
+  await sendV2('MISSION_REQUEST_INT', { seq: 0, target_system: 1, target_component: 1, mission_type: 1 });
+  const fBack = await waitFor('MISSION_ITEM_INT');
+  check(fBack?.fields.command === 5003 && fBack.fields.mission_type === 1, 'fence item served back with mission_type=1');
+
   // 3c) GUIDED go-to via COMMAND_INT DO_REPOSITION.
   received.delete('COMMAND_ACK');
   await sendToBridge('COMMAND_INT', {

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createVehicle, vehicleStep, vehicleCommand, vehicleFault, vehicleClearFault,
+  createVehicle, vehicleStep, vehicleCommand, vehicleFault, vehicleClearFault, vehicleTelemetry,
 } from '../src/vehicle.js';
 import { createEstimator, createAttEstimator } from '../src/estimator.js';
 import { MODES } from '../src/autopilot.js';
@@ -112,4 +112,47 @@ test('crash detection: a bad-attitude touchdown latches disarmed and stops', () 
   const restX = v.state.pos[0], restZ = v.state.pos[2];
   for (let i = 0; i < 10 * 60; i++) v = vehicleStep(v, DT);
   assert.ok(Math.hypot(v.state.pos[0] - restX, v.state.pos[2] - restZ) < 30, 'wreck skids away instead of stopping');
+});
+
+// --- Geofence enforcement: breach → RTL divert, surfaced over telemetry ---------
+test('geofence: an inclusion-circle breach diverts the vehicle to RTL', () => {
+  let v = createVehicle({ boot: 'air', sensorSeed: 21, windSeed: 22 });
+  for (let i = 0; i < 60; i++) v = vehicleStep(v, DT); // cruise ~27 m out from home
+  // Inclusion circle r=10 m at home — the cruising aircraft is well outside it.
+  v = vehicleCommand(v, { type: 'fence', items: [{ command: 5003, lat: HOME.lat, lon: HOME.lon, param1: 10 }] });
+  v = vehicleStep(v, DT);
+  assert.equal(v.ap.mode, MODES.RTL, 'breach did not divert to RTL');
+  assert.ok(v.fenceBreach, 'breach label not set');
+  assert.equal(vehicleTelemetry(v).faults.fence, v.fenceBreach, 'breach not surfaced in telemetry faults');
+});
+
+test('geofence: a fence the vehicle is inside does not divert', () => {
+  let v = createVehicle({ boot: 'air', sensorSeed: 21, windSeed: 22 });
+  v = vehicleStep(v, DT);
+  v = vehicleCommand(v, { type: 'fence', items: [{ command: 5003, lat: HOME.lat, lon: HOME.lon, param1: 5000 }] });
+  v = vehicleStep(v, DT);
+  assert.equal(v.fenceBreach, null);
+  assert.equal(v.ap.mode, MODES.MANUAL, 'diverted despite being inside the fence');
+});
+
+test('geofence: FENCE_ALT_MAX ceiling breach also diverts to RTL', () => {
+  let v = createVehicle({ boot: 'air', sensorSeed: 21, windSeed: 22 });
+  v = vehicleStep(v, DT); // ~120 m alt
+  v = vehicleCommand(v, { type: 'fence', altMax: 50 });
+  v = vehicleStep(v, DT);
+  assert.equal(v.fenceBreach, 'max altitude');
+  assert.equal(v.ap.mode, MODES.RTL);
+});
+
+test('geofence: clearing the fence (empty upload) stops enforcing', () => {
+  let v = createVehicle({ boot: 'air', sensorSeed: 21, windSeed: 22 });
+  for (let i = 0; i < 60; i++) v = vehicleStep(v, DT); // cruise ~27 m out from home
+  v = vehicleCommand(v, { type: 'fence', items: [{ command: 5003, lat: HOME.lat, lon: HOME.lon, param1: 10 }] });
+  v = vehicleStep(v, DT);
+  assert.ok(v.fenceBreach, 'expected a breach before clearing');
+  v = vehicleCommand(v, { type: 'fence', items: [] }); // clear
+  v = vehicleStep(v, DT);
+  assert.equal(v.fence, null);
+  assert.equal(v.fenceBreach, null);
+  assert.equal(vehicleTelemetry(v).faults.fence, undefined);
 });

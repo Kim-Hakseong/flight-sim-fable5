@@ -140,6 +140,7 @@ export const MESSAGES = {
   MISSION_REQUEST: {
     id: 40, crcExtra: 230,
     fields: [['seq', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
+    ext: [['mission_type', 'uint8']], // 0=mission 1=fence 2=rally (v2 extension)
   },
   MISSION_CURRENT: {
     id: 42, crcExtra: 28,
@@ -148,10 +149,12 @@ export const MESSAGES = {
   MISSION_REQUEST_LIST: {
     id: 43, crcExtra: 132,
     fields: [['target_system', 'uint8'], ['target_component', 'uint8']],
+    ext: [['mission_type', 'uint8']],
   },
   MISSION_COUNT: {
     id: 44, crcExtra: 221,
     fields: [['count', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
+    ext: [['mission_type', 'uint8']],
   },
   MISSION_ITEM_REACHED: {
     id: 46, crcExtra: 11,
@@ -160,10 +163,12 @@ export const MESSAGES = {
   MISSION_ACK: {
     id: 47, crcExtra: 153,
     fields: [['target_system', 'uint8'], ['target_component', 'uint8'], ['type', 'uint8']],
+    ext: [['mission_type', 'uint8']],
   },
   MISSION_REQUEST_INT: {
     id: 51, crcExtra: 196,
     fields: [['seq', 'uint16'], ['target_system', 'uint8'], ['target_component', 'uint8']],
+    ext: [['mission_type', 'uint8']],
   },
   MISSION_ITEM_INT: {
     id: 73, crcExtra: 38,
@@ -174,6 +179,7 @@ export const MESSAGES = {
       ['target_system', 'uint8'], ['target_component', 'uint8'], ['frame', 'uint8'],
       ['current', 'uint8'], ['autocontinue', 'uint8'],
     ],
+    ext: [['mission_type', 'uint8']],
   },
   COMMAND_INT: {
     id: 75, crcExtra: 158,
@@ -221,9 +227,16 @@ export const MESSAGES_BY_ID = new Map(
   Object.entries(MESSAGES).map(([name, def]) => [def.id, { name, ...def }])
 );
 
+const sumSizes = (fields) => fields.reduce((n, [, t]) => n + TYPES[t].size, 0);
+
+// Base payload length = the CRC-relevant fields only (what a v1 frame carries and
+// what crc_extra is defined over). Extension fields (def.ext) are appended AFTER
+// the base, ride only in v2, and never affect crc_extra.
 export function payloadLength(def) {
-  return def.fields.reduce((n, [, t]) => n + TYPES[t].size, 0);
+  return sumSizes(def.fields);
 }
+const fullLength = (def) => sumSizes(def.fields) + (def.ext ? sumSizes(def.ext) : 0);
+const allFields = (def) => (def.ext ? [...def.fields, ...def.ext] : def.fields);
 
 // X.25 / CRC-16-MCRF4XX, as specified by MAVLink.
 export function crcAccumulate(byte, crc) {
@@ -239,11 +252,11 @@ export function crcX25(bytes, crc = 0xffff) {
 
 export const MAGIC_V2 = 0xfd;
 
-function packPayload(def, values) {
-  const full = new Uint8Array(payloadLength(def));
+function packPayload(fields, size, values) {
+  const full = new Uint8Array(size);
   const view = new DataView(full.buffer);
   let o = 0;
-  for (const [field, type] of def.fields) {
+  for (const [field, type] of fields) {
     TYPES[type].set(view, o, values[field] ?? 0);
     o += TYPES[type].size;
   }
@@ -251,10 +264,14 @@ function packPayload(def, values) {
 }
 
 // v2 framing: 0xFD, 24-bit msgid, trailing zero bytes of the payload truncated.
+// v1 carries base fields only; v2 also carries extension fields (then truncates
+// trailing zeros — so a zero mission_type costs nothing on the wire).
 export function encode(name, values, { seq = 0, sysid = 1, compid = 1, v2 = false } = {}) {
   const def = MESSAGES[name];
   if (!def) throw new Error(`unknown message: ${name}`);
-  const payload = packPayload(def, values);
+  const payload = v2
+    ? packPayload(allFields(def), fullLength(def), values)
+    : packPayload(def.fields, payloadLength(def), values);
   if (!v2) {
     const len = payload.length;
     const buf = new Uint8Array(6 + len + 2);
@@ -280,12 +297,12 @@ export function encode(name, values, { seq = 0, sysid = 1, compid = 1, v2 = fals
 }
 
 function unpack(def, buf, start, len) {
-  const full = new Uint8Array(payloadLength(def)); // zero-extend truncated v2 payloads
+  const full = new Uint8Array(fullLength(def)); // zero-extend truncated v2 payloads
   full.set(buf.subarray(start, start + len));
   const view = new DataView(full.buffer);
   const fields = {};
   let o = 0;
-  for (const [field, type] of def.fields) {
+  for (const [field, type] of allFields(def)) {
     fields[field] = TYPES[type].get(view, o);
     o += TYPES[type].size;
   }
@@ -317,7 +334,7 @@ export function decode(buf) {
       if (end > buf.length) continue;
       const msgid = buf[i + 7] | (buf[i + 8] << 8) | (buf[i + 9] << 16);
       const def = MESSAGES_BY_ID.get(msgid);
-      if (!def || len > payloadLength(def)) continue;
+      if (!def || len > fullLength(def)) continue;
       let crc = crcX25(buf.subarray(i + 1, i + 10 + len));
       crc = crcAccumulate(def.crcExtra, crc);
       const wire = buf[i + 10 + len] | (buf[i + 10 + len + 1] << 8);

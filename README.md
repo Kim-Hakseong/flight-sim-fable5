@@ -26,6 +26,8 @@ QGroundControl을 UDP 14550으로 붙이면 아래 루프가 돕니다:
 - **Commands down** — ARM/DISARM, 모드 변경(Manual/Auto/Guided/RTL/Loiter),
   takeoff·land·RTL, live parameter, virtual joystick.
 - **Missions down** — 미션 업로드·비행, "Go to location"(guided go-to), MISSION_START.
+- **Geofence down** — QGC Fence 편집기로 그린 원형·다각형 금지/포함 구역과 고도 상한을
+  업로드(mission_type=1). 위반 시 기체가 자동 RTL로 회피하고 STATUSTEXT로 경고.
 - **Vehicle responds** — 명령이 autopilot을 통해 기체를 실제로 움직이고, 그 결과가
   다시 telemetry로 올라갑니다.
 
@@ -72,8 +74,8 @@ npm run check:browser             # headless Chrome: console-0 + determinism + D
 ## Repository layout
 
 ```
-src/          physics, wind, sensors, estimator, autopilot, missions, telemetry,
-              params, battery, vehicle(공유 코어), hils(scenario runner),
+src/          physics, wind, sensors, estimator, autopilot, missions, geofence,
+              telemetry, params, battery, vehicle(공유 코어), hils(scenario runner),
               engineering(콘솔), hilspanel(channel monitor), scene, main
 bridge/       server.mjs (HTTP/SSE ↔ MAVLink UDP), mavlink.mjs (v1/v2),
               compat-params.mjs (QGC Vehicle Setup 호환 파라미터 스텁)

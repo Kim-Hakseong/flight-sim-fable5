@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { encode, decode } from './mavlink.mjs';
 import { PARAM_DEFS, PARAM_TYPE_REAL32, defaultParams, clampParam } from '../src/params.js';
 import { MODE_NAMES } from '../src/autopilot.js';
-import { COMPAT_PARAMS } from './compat-params.mjs';
+import { COMPAT_PARAMS, FENCE_FORWARDED } from './compat-params.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const HTTP_PORT = Number(process.env.BRIDGE_HTTP_PORT ?? 8765);
@@ -119,6 +119,11 @@ function handleParamSet(f) {
   if (compat.has(f.param_id)) { // QGC setup-page writes: accept + echo, keep local
     compat.set(f.param_id, f.param_value);
     sendParamValue(f.param_id);
+    // A few fence params drive real enforcement — forward them to the sim.
+    if (FENCE_FORWARDED.has(f.param_id)) {
+      const altMax = (compat.get('FENCE_ENABLE') ? compat.get('FENCE_ALT_MAX') : 0) || 0;
+      pushCommand({ type: 'fence', altMax });
+    }
     return;
   }
   const clamped = clampParam(f.param_id, f.param_value);
@@ -128,36 +133,68 @@ function handleParamSet(f) {
   pushCommand({ type: 'param', id: f.param_id, value: clamped });
 }
 
-// --- Mission protocol (upload: COUNT → REQUEST_INT×n → ACK; download: mirror) ---
+// --- Mission + fence protocol (upload: COUNT → REQUEST_INT×n → ACK; download:
+// mirror). mission_type 0 = mission (waypoints), 1 = fence (geofence geometry);
+// the same handshake carries both, distinguished by the MISSION_COUNT mission_type.
+const MT_MISSION = 0;
+const MT_FENCE = 1;
 let missionItems = []; // accepted plan, as raw MISSION_ITEM_INT fields
-let upload = null; // { count, items, timer }
+let fenceItems = []; // accepted fence, as raw MISSION_ITEM_INT fields
+let upload = null; // { count, items, tries, timer, mtype }
 
 function requestNextItem() {
   if (!upload) return;
   sendMsg('MISSION_REQUEST_INT', {
     seq: upload.items.length, target_system: 255, target_component: 0,
+    mission_type: upload.mtype,
   });
 }
 
-function startUpload(count) {
+function startUpload(count, mtype = MT_MISSION) {
   if (upload) clearInterval(upload.timer);
-  if (count === 0) {
-    missionItems = [];
-    sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
-    pushCommand({ type: 'mission', items: [] });
+  if (count === 0) { // clear the mission or the fence
+    if (mtype === MT_FENCE) { fenceItems = []; pushCommand({ type: 'fence', items: [] }); }
+    else { missionItems = []; pushCommand({ type: 'mission', items: [] }); }
+    sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0, mission_type: mtype });
     return;
   }
-  upload = { count, items: [], tries: 0, timer: null };
+  upload = { count, items: [], tries: 0, timer: null, mtype };
   upload.timer = setInterval(() => {
     if (++upload.tries > 8) { // give up: MAV_MISSION_ERROR
       clearInterval(upload.timer);
-      upload = null;
-      sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 1 });
+      const mt = upload.mtype; upload = null;
+      sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 1, mission_type: mt });
       return;
     }
     requestNextItem();
   }, 700);
   requestNextItem();
+}
+
+function finishUpload() {
+  clearInterval(upload.timer);
+  const { items, mtype } = upload;
+  upload = null;
+  sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0, mission_type: mtype });
+  if (mtype === MT_FENCE) {
+    fenceItems = items;
+    pushCommand({
+      type: 'fence',
+      items: items.map((it) => ({
+        command: it.command, lat: it.x / 1e7, lon: it.y / 1e7, param1: it.param1,
+      })),
+    });
+    return;
+  }
+  missionItems = items;
+  pushCommand({
+    type: 'mission',
+    items: items.map((it) => ({
+      seq: it.seq, command: it.command, frame: it.frame,
+      lat: it.x / 1e7, lon: it.y / 1e7, alt: it.z,
+      param1: it.param1, param2: it.param2,
+    })),
+  });
 }
 
 function onMissionItem(f) {
@@ -173,22 +210,8 @@ function onMissionItem(f) {
   if (!upload || f.seq !== upload.items.length) return; // duplicate/stray
   upload.items.push(f);
   upload.tries = 0;
-  if (upload.items.length < upload.count) {
-    requestNextItem();
-    return;
-  }
-  clearInterval(upload.timer);
-  missionItems = upload.items;
-  upload = null;
-  sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
-  pushCommand({
-    type: 'mission',
-    items: missionItems.map((it) => ({
-      seq: it.seq, command: it.command, frame: it.frame,
-      lat: it.x / 1e7, lon: it.y / 1e7, alt: it.z,
-      param1: it.param1, param2: it.param2,
-    })),
-  });
+  if (upload.items.length < upload.count) { requestNextItem(); return; }
+  finishUpload();
 }
 
 udp.on('message', (buf, rinfo) => {
@@ -218,7 +241,7 @@ udp.on('message', (buf, rinfo) => {
       relayMode(f.custom_mode);
       break;
     case 'MISSION_COUNT':
-      startUpload(f.count);
+      startUpload(f.count, f.mission_type >>> 0);
       break;
     case 'MISSION_ITEM_INT':
       onMissionItem(f);
@@ -229,13 +252,17 @@ udp.on('message', (buf, rinfo) => {
         sendMsg('MISSION_ACK', { target_system: 255, target_component: 0, type: 0 });
       }
       break;
-    case 'MISSION_REQUEST_LIST': // GCS downloads our plan back
-      sendMsg('MISSION_COUNT', { count: missionItems.length, target_system: 255, target_component: 0 });
+    case 'MISSION_REQUEST_LIST': { // GCS downloads our plan/fence back
+      const mt = f.mission_type >>> 0;
+      const list = mt === MT_FENCE ? fenceItems : missionItems;
+      sendMsg('MISSION_COUNT', { count: list.length, target_system: 255, target_component: 0, mission_type: mt });
       break;
+    }
     case 'MISSION_REQUEST_INT':
     case 'MISSION_REQUEST': {
-      const it = missionItems[f.seq];
-      if (it) sendMsg('MISSION_ITEM_INT', it);
+      const mt = f.mission_type >>> 0;
+      const it = (mt === MT_FENCE ? fenceItems : missionItems)[f.seq];
+      if (it) sendMsg('MISSION_ITEM_INT', { ...it, mission_type: mt });
       break;
     }
     case 'PARAM_REQUEST_LIST':

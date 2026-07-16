@@ -26,6 +26,7 @@ const FLOORS = {
   'params.js': 100,
   'battery.js': 100,
   'prng.js': 100,
+  'geofence.js': 100,
   // telemetry.js pure math (geodetic/euler/telemetryFrom) is fully covered;
   // the shortfall is startTelemetry (a browser fetch loop, not model code).
   'telemetry.js': 85,

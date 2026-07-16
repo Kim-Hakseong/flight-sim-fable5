@@ -16,6 +16,7 @@ import {
 } from './estimator.js';
 import { createBattery, stepBattery, batteryOutputs } from './battery.js';
 import { createWind, stepWind } from './wind.js';
+import { buildFence, fenceBreach } from './geofence.js';
 
 const NEUTRAL_STICK = { pitch: 0, roll: 0, yaw: 0, throttle: 0 };
 
@@ -44,6 +45,9 @@ export function createVehicle({ boot = 'ground', sensorSeed = 1, windSeed = 2, p
     gcsStick: null, gcsStickAge: 1e9, // MANUAL_CONTROL joystick (freshness-gated)
     crashed: false, // weight-on-wheels crash latch (cleared only by reset)
     servoFaults: {}, // channel (da/de/dr/dt) → {type: jam|floating|slow, factor?}
+    fence: null, // built geofence geometry (null = no fence uploaded)
+    fenceAltMax: 0, // altitude ceiling in m (0 = disabled)
+    fenceBreach: null, // current breach label (for STATUSTEXT), null when inside
   };
 }
 
@@ -97,6 +101,13 @@ export function vehicleCommand(v, cmd) {
       if (val === null) return v;
       return { ...v, params: { ...v.params, [cmd.id]: val } };
     }
+    case 'fence': {
+      // Partial update: `items` (present, even empty) rebuilds geometry; `altMax`
+      // sets the ceiling. An empty item list clears the fence.
+      const fence = cmd.items !== undefined ? (cmd.items.length ? buildFence(cmd.items) : null) : v.fence;
+      const fenceAltMax = cmd.altMax != null ? cmd.altMax : v.fenceAltMax;
+      return { ...v, fence, fenceAltMax };
+    }
     default:
       return v;
   }
@@ -143,6 +154,15 @@ export function vehicleStep(v, dt, stick = null) {
   }
 
   let { ap, armed, lastReached } = v;
+
+  // Geofence: test the ESTIMATED position (the control path never sees truth).
+  // On breach while flying, divert to RTL — recoverable, unlike the crash latch:
+  // once RTL flies the vehicle back inside, the breach clears on its own.
+  const fenceB = (v.fence || v.fenceAltMax) ? fenceBreach(nav.pos, v.fence, v.fenceAltMax) : null;
+  if (fenceB && armed && !nav.wow && !ap.landing && ap.mode !== MODES.RTL) {
+    ap = { ...ap, mode: MODES.RTL, guided: null };
+  }
+
   let controls;
   if (crashed) {
     armed = false;
@@ -166,6 +186,7 @@ export function vehicleStep(v, dt, stick = null) {
   return {
     ...v,
     state, armed, ap, lastReached, crashed,
+    fenceBreach: fenceB,
     lastControls: controls,
     wind: w.wind, windWorld: w.windWorld,
     sensors: sw.sensors, readings: sw.readings,
@@ -192,6 +213,7 @@ export function vehicleTelemetry(v) {
       ...v.readings?.faults,
       ...Object.fromEntries(Object.entries(v.servoFaults).map(([ch, f]) => [`servo_${ch}`, f.type])),
       ...(v.crashed ? { crash: 'detected' } : {}),
+      ...(v.fenceBreach ? { fence: v.fenceBreach } : {}),
     },
     est: v.est, ekf: ekfReport(v.est, v.readings),
     va: v.readings?.pitot?.[0] ?? undefined,

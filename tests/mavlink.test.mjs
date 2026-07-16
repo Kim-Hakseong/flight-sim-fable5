@@ -165,6 +165,46 @@ test('v2: round-trip with payload truncation restored, v1 interop intact', () =>
   assert.equal(decode(encode('HEARTBEAT', hb)).v2, false, 'v1 still frames as v1');
 });
 
+test('mission_type extension: v2 carries it, v1 omits it, crc unaffected', () => {
+  // v1 frame is base-only: mission_type absent on the wire, decodes as 0.
+  const v1 = decode(encode('MISSION_COUNT', { count: 4, target_system: 1, target_component: 1, mission_type: 1 }));
+  assert.equal(v1.crcOk, true);
+  assert.equal(v1.fields.count, 4);
+  assert.equal(v1.fields.mission_type, 0, 'v1 drops the extension field → 0');
+
+  // v2 frame carries the extension: a fence upload (mission_type=1) survives.
+  const fence = decode(encode('MISSION_COUNT', { count: 4, target_system: 1, target_component: 1, mission_type: 1 }, { v2: true }));
+  assert.equal(fence.crcOk, true);
+  assert.equal(fence.fields.count, 4);
+  assert.equal(fence.fields.mission_type, 1, 'v2 preserves mission_type');
+
+  // v2 with a zero mission_type truncates the trailing byte but restores it as 0.
+  const mission = decode(encode('MISSION_COUNT', { count: 2, target_system: 1, target_component: 1, mission_type: 0 }, { v2: true }));
+  assert.equal(mission.crcOk, true);
+  assert.equal(mission.fields.mission_type, 0);
+
+  // ACK + REQUEST_INT round-trip their mission_type on v2 too.
+  const ack = decode(encode('MISSION_ACK', { target_system: 255, target_component: 0, type: 0, mission_type: 1 }, { v2: true }));
+  assert.equal(ack.crcOk, true);
+  assert.equal(ack.fields.mission_type, 1);
+  const req = decode(encode('MISSION_REQUEST_INT', { seq: 3, target_system: 255, target_component: 0, mission_type: 1 }, { v2: true }));
+  assert.equal(req.crcOk, true);
+  assert.equal(req.fields.seq, 3);
+  assert.equal(req.fields.mission_type, 1);
+});
+
+test('fence MISSION_ITEM_INT: circle-inclusion item round-trips on v2', () => {
+  const it = decode(encode('MISSION_ITEM_INT', {
+    param1: 250, param2: 0, param3: 0, param4: 0,
+    x: 374449000, y: 1264656000, z: 0, seq: 0, command: 5003, // NAV_FENCE_CIRCLE_INCLUSION
+    target_system: 1, target_component: 1, frame: 3, current: 0, autocontinue: 1, mission_type: 1,
+  }, { v2: true }));
+  assert.equal(it.crcOk, true);
+  assert.equal(it.fields.command, 5003);
+  assert.equal(it.fields.param1, 250);
+  assert.equal(it.fields.mission_type, 1);
+});
+
 test('decode: returns null on truncated or unknown input', () => {
   assert.equal(decode(new Uint8Array([0xfe, 9, 0, 1])), null);
   assert.equal(decode(new Uint8Array(20).fill(0x55)), null);

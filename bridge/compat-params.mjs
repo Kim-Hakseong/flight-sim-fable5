@@ -36,4 +36,15 @@ export const COMPAT_PARAMS = new Map(Object.entries({
   INS_GYR1_CALTEMP: 34.5, INS_GYR2_CALTEMP: -300, INS_GYR3_CALTEMP: -300,
   // Battery + arming
   BATT_MONITOR: 4, ARMING_CHECK: 1,
+  // Geofence (QGC Fence editor). Geometry is uploaded via the fence mission
+  // protocol (mission_type=1); these params configure the fence page. The sim
+  // enforces any uploaded geometry (breach → RTL); FENCE_ALT_MAX is forwarded so
+  // an altitude ceiling also bites. FENCE_TYPE 7 = alt+circle+polygon.
+  FENCE_ENABLE: 1, FENCE_TYPE: 7, FENCE_ACTION: 1, FENCE_TOTAL: 0,
+  FENCE_ALT_MAX: 120, FENCE_ALT_MIN: -10, FENCE_RADIUS: 300, FENCE_MARGIN: 2,
+  FENCE_RET_RALLY: 0, FENCE_AUTOENABLE: 0,
 }));
+
+// FENCE params the bridge forwards to the sim (not pure cosmetic stubs): a change
+// to one re-pushes a fence command so enforcement tracks the GCS setting.
+export const FENCE_FORWARDED = new Set(['FENCE_ALT_MAX', 'FENCE_ENABLE']);
