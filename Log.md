@@ -684,3 +684,18 @@
 **Tests**: unit 109/109 · gcs PASS(펜스 지오메트리 경로 유지) · HILS 7/7 · browser PASS
 **Decisions**: 사용자 보고 "미션까지 잘 되다가 이제 go-to/RTL/이륙 다 안됨(더 나빠짐)". 원인: M30에서 FENCE_ENABLE/FENCE_ALT_MAX PARAM_SET을 심으로 forward하게 했는데, QGC Fence 페이지를 열거나 펜스를 만지면 QGC가 FENCE_ENABLE를 write → 브리지가 altMax=FENCE_ALT_MAX(기본 120m)를 심에 전달 → 고도 120m 초과 시 지오펜스 위반으로 자동 RTL 회피. 사용자 미션/go-to가 120~150m라 계속 복귀당해 "안 되는" 것처럼 보임. 수정: FENCE_* 파라미터를 순수 compat 스텁으로 되돌리고 자동 altMax forward 제거(FENCE_FORWARDED 삭제). 지오펜스는 이제 사용자가 **직접 그려 업로드한 지오메트리(원/다각형)** 만 집행 — 명시적 opt-in. FENCE_ENABLE 기본값도 ArduPlane과 동일하게 0으로.
 **Notes**: 교훈 — 파라미터 조회/편집이 조용히 비행 동작을 바꾸면 안 됨. 고도 펜스는 사용자가 명시적으로 원할 때 별도 경로로. 브리지 재시작 + 브라우저 새로고침하면 잔여 펜스도 초기화됨.
+
+## 2026-07-16 — (feature 브랜치) 위성/도로 지도 타일 — 시뮬 바닥을 QGC와 동일 위치로
+
+**Status**: GREEN (feature/map-tiles 브랜치, main 미반영 — 롤백 용이)
+**Files changed**: src/maptiles.js(신규), src/main.js, index.html
+**Tests**: unit 109/109 · coverage PASS · gcs PASS · HILS 7/7 · browser PASS(map off 기본 → console 0·결정성 유지) · 헤드리스 실검증: 49/49 타일 Esri 로드, 인천 위성사진이 활주로에 정렬되어 렌더
+**Decisions**:
+- 사용자 요청: 시뮬 바닥에도 QGC와 같은 인천 위성지도를 보여주되, 지형을 손코딩하지 말고 쉬운 방법으로.
+- 방법: **XYZ 슬리피맵 타일을 바닥 평면에 텍스처로** — QGC와 동일 원리. 무료·키불필요 Esri(World_Imagery 위성 / World_Street_Map 도로) 사용. HOME 위경도 기준으로 (2·3+1)²=49 타일(zoom 15, ~6.6km)을 geodeticToLocal 매핑으로 실제 위치에 배치 → 비행체가 나는 곳과 지도가 정확히 일치.
+- **완전 렌더 전용**: 물리/비행/결정성 로직 무접촉. 기본 mode='off'라 네트워크 로드 없음 → browser-check console 0·결정성 그대로.
+- 타일 y=0.03(지면 0 위, 활주로 0.04 아래)라 활주로/마킹은 위성 위에 계속 보임. MeshLambert+receiveShadow → 기체 그림자가 지도에 떨어져 씬과 자연스럽게 융합.
+- **롤백 3중 안전장치**: (1) feature 브랜치 — main 무변경, (2) 독립 모듈 src/maptiles.js, (3) 인게임 `G` 키로 off→satellite→road 순환(끄면 기존 초록 지형).
+- 트레이드오프: 타일은 공개 CORS 타일서버에서 async 로드 — 오프라인이면 안 뜨고 초록 지형 폴백.
+**Next**:
+- 사용자 확인 후 마음에 들면 main 머지. 아니면 브랜치 폐기.
