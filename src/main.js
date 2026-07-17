@@ -92,8 +92,9 @@ window.__hils = {
 
 // --- Scene (built in src/scene.js; render-only) --------------------------------
 const world = createWorld(THREE);
-// Satellite/road map tiles under the sim, aligned to HOME (render-only, async).
-const mapTiles = createMapTiles(THREE, world.scene, world.ground);
+// Satellite/road imagery baked onto the ground texture, aligned to HOME
+// (render-only, async, single surface — no z-fighting).
+const mapTiles = createMapTiles(THREE, world.ground);
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyG') showMapHint(mapTiles.cycle());
 });
