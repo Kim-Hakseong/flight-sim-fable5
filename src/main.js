@@ -15,6 +15,7 @@ import { batteryOutputs } from './battery.js';
 import { startTelemetry } from './telemetry.js';
 import { startMissionLink } from './missionLink.js';
 import { createWorld } from './scene.js';
+import { createMapTiles } from './maptiles.js';
 import { createEngineering } from './engineering.js';
 import { createHilsPanel } from './hilspanel.js';
 import { SCENARIOS, runScenario } from './hils.js';
@@ -91,6 +92,29 @@ window.__hils = {
 
 // --- Scene (built in src/scene.js; render-only) --------------------------------
 const world = createWorld(THREE);
+// Satellite/road imagery baked onto the ground texture, aligned to HOME
+// (render-only, async, single surface — no z-fighting).
+const mapTiles = createMapTiles(THREE, world.ground);
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyG') showMapHint(mapTiles.cycle());
+});
+let mapHintTimer = null;
+function showMapHint(m) {
+  let el = document.getElementById('maphint');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'maphint';
+    el.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:20;'
+      + 'color:#dfe8f5;font:12px ui-monospace,Menlo,monospace;background:rgba(10,14,22,0.8);'
+      + 'border:1px solid #2b3345;border-radius:6px;padding:4px 12px;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = `MAP: ${m.toUpperCase()}`;
+  el.style.opacity = '1';
+  clearTimeout(mapHintTimer);
+  mapHintTimer = setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.6s'; }, 1400);
+}
+window.__mapTiles = mapTiles; // DOM-gate / debug hook
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));

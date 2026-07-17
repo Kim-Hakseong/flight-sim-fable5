@@ -266,5 +266,5 @@ export function createWorld(THREE) {
     camera.lookAt(ahead);
   }
 
-  return { scene, camera, update };
+  return { scene, camera, update, ground };
 }
